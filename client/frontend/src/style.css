@@ -546,6 +546,31 @@ body {
   color: #777;
 }
 
+.audio-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: #0d0d0d;
+  color: #ccc;
+}
+
+.audio-viewer__audio {
+  width: min(720px, 100%);
+}
+
+.audio-viewer__name {
+  font-size: 0.85rem;
+  color: #888;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Video viewer ── */
 
 .video-viewer {

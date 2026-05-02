@@ -14,9 +14,25 @@ const VIDEO_MIME: Record<string, string> = {
   ogv: "video/ogg",
 };
 
+const AUDIO_MIME: Record<string, string> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  aac: "audio/aac",
+  amr: "audio/amr",
+};
+
 function videoMime(path: string): string | null {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return VIDEO_MIME[ext] ?? null;
+}
+
+function audioMime(path: string): string | null {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return AUDIO_MIME[ext] ?? null;
 }
 
 const IMAGE_MIME: Record<string, string> = {
@@ -34,7 +50,7 @@ function imageMime(path: string): string | null {
 }
 
 function mediaMime(path: string): string | null {
-  return imageMime(path) ?? videoMime(path);
+  return imageMime(path) ?? videoMime(path) ?? audioMime(path);
 }
 
 function binaryToObjectUrl(base64: string, mime: string): string {
@@ -257,6 +273,17 @@ function ImageViewer({
       <div className="media-viewer__surface">
         <img src={src} alt={basename(path)} className="image-viewer__img" />
       </div>
+    </div>
+  );
+}
+
+function AudioViewer({ path, mime }: { path: string; mime: string }) {
+  const src = useVideoSource(path, mime);
+  if (!src) return <div className="viewer-loading">Loading…</div>;
+  return (
+    <div className="audio-viewer">
+      <audio controls src={src} className="audio-viewer__audio" />
+      <div className="audio-viewer__name">{basename(path)}</div>
     </div>
   );
 }
@@ -508,6 +535,8 @@ export default function FileViewer({ path, onSelectFile, onExitToFolderView, pre
   if (imgMime) return <ImageViewer path={path} mime={imgMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
   const vidMime = videoMime(path);
   if (vidMime) return <VideoViewer path={path} mime={vidMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
+  const audMime = audioMime(path);
+  if (audMime) return <AudioViewer path={path} mime={audMime} />;
   if (!isMarkdownPath(path) && !isTextLikePath(path)) return <NoSupportViewer path={path} />;
   return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
 }

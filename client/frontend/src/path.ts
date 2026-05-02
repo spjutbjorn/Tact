@@ -58,7 +58,7 @@ export function isRtfPath(path: string): boolean {
 }
 
 export function isTextLikePath(path: string): boolean {
-  return /\.(txt|md|markdown|json|yaml|yml|xml|csv|log|toml|ini|conf|rs|go|ts|tsx|js|jsx|css|html|htm|c|h|cpp|hpp|py|sh|zsh|bash|sql|lua|java|kt|swift|rb|php|cs|sln|csproj|mdx)$/i.test(path);
+  return /\.(txt|md|markdown|json|yaml|yml|xml|csv|log|toml|ini|conf|rs|go|ts|tsx|js|jsx|css|html|htm|c|h|cpp|hpp|py|sh|zsh|bash|sql|lua|java|kt|swift|rb|php|cs|sln|csproj|mdx|cjs|mjs|cts|mts|flow|bnf|applescript|mod|sum|md5|map|proto|svelte|iml|plist|mdc|manifest|version|work|m)$/i.test(path);
 }
 
 export function isZipArchivePath(path: string): boolean {

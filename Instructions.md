@@ -28,9 +28,11 @@
 ## File Viewer
 - Visar innehållet i markerad fil i huvudytan.
 - Markdown kan växla mellan edit och preview.
-- DOCX, PDF, bilder, video och text öppnas i anpassade viewers.
+- DOCX, EPUB, RTF, PDF, bilder, video och text öppnas i anpassade viewers.
+- `.cjs`, `.mjs`, `.cts`, `.mts`, `.flow`, `.bnf`, `.applescript`, `.mod`, `.sum`, `.md5` och `.map` öppnas som text.
 - Save skriver tillbaka ändringar i edit-läget.
 - MKV provas direkt först och transkodas bara om direktuppspelning misslyckas.
+- Okända binärer visas som `No file support for this format.`
 
 ## Git
 - Visar staged och unstaged ändringar.
@@ -51,3 +53,4 @@
 ## Notes
 - ZIP-filer kan öppnas som virtuella folders.
 - Delete och copy fungerar även för zip-innehåll där det är möjligt.
+- EPUB och RTF renderas via pandoc-baserad HTML-preview.
