@@ -3,6 +3,7 @@
 ## App Shell
 - Huvudfönstret är uppdelat i titelrad, breadcrumb, innehållsyta och en ikonbar till höger.
 - Den aktiva vyn väljs i ikonbaren.
+- Breadcrumb har en volymväljare vid root så vänster och höger filpanel kan ligga på olika enheter.
 
 ## Files
 - Visar filsystemet som ett träd.
@@ -11,20 +12,25 @@
 - Delete-ikonen längst till höger tar bort filen eller foldern.
 - Rename och new file finns i panelhuvudet.
 - `..` går upp en nivå.
+- Vid root öppnar `..` eller panelens root-trigger enhetsväljaren.
+- Filsize visas till höger om varje filrad, och `..` visar totalstorleken för aktuell mapp.
 
 ## Split Files
 - Transfer-ikonen slår på två filpaneler.
 - Vänster och höger panel är lika stora.
 - `Up` / `W` flyttar markeringen upp.
 - `Down` / `S` flyttar markeringen ner.
+- Vänster panel styrs med `WASD`, höger panel med piltangenter.
 - Pilen mot den andra panelen kopierar den markerade filen eller foldern dit.
-- Pilen bort från den andra panelen hoppar till den andra panelen för navigering.
+- Pilen bort från den andra panelen flyttar den markerade filen eller foldern dit.
+- `Enter` / `q` öppnar markerad fil eller folder i aktuell panel.
 
 ## File Viewer
 - Visar innehållet i markerad fil i huvudytan.
 - Markdown kan växla mellan edit och preview.
 - DOCX, PDF, bilder, video och text öppnas i anpassade viewers.
 - Save skriver tillbaka ändringar i edit-läget.
+- MKV provas direkt först och transkodas bara om direktuppspelning misslyckas.
 
 ## Git
 - Visar staged och unstaged ändringar.

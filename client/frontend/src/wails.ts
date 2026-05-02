@@ -1,6 +1,7 @@
 export interface FileEntry {
   name: string;
   isDir: boolean;
+  size: number;
 }
 
 export interface VolumeInfo {
@@ -17,11 +18,13 @@ interface WailsApp {
   GetCwd: () => Promise<string>;
   Navigate: (path: string) => Promise<string>;
   ListDir: (path: string) => Promise<FileEntry[]>;
+  DirSize: (path: string) => Promise<number>;
   ListVolumes: () => Promise<VolumeInfo[]>;
   ReadTextFile: (path: string) => Promise<string>;
   ReadDocxFile: (path: string) => Promise<string>;
   WriteTextFile: (path: string, content: string) => Promise<boolean>;
   ReadBinaryFile: (path: string) => Promise<string>;
+  PrepareVideoPath: (path: string) => Promise<string>;
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
   CopyPath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
@@ -50,6 +53,9 @@ export const Navigate = (path: string): Promise<string> =>
 export const ListDir = (path: string): Promise<FileEntry[]> =>
   app()?.ListDir(path) ?? Promise.resolve([]);
 
+export const DirSize = (path: string): Promise<number> =>
+  app()?.DirSize(path) ?? Promise.resolve(0);
+
 export const ListVolumes = (): Promise<VolumeInfo[]> =>
   app()?.ListVolumes() ?? Promise.resolve([{ path: "/", name: "local" }]);
 
@@ -64,6 +70,9 @@ export const WriteTextFile = (path: string, content: string): Promise<boolean> =
 
 export const ReadBinaryFile = (path: string): Promise<string> =>
   app()?.ReadBinaryFile(path) ?? Promise.resolve("");
+
+export const PrepareVideoPath = (path: string): Promise<string> =>
+  app()?.PrepareVideoPath(path) ?? Promise.resolve("");
 
 export const Rename = (oldPath: string, newPath: string): Promise<boolean> =>
   app()?.Rename(oldPath, newPath) ?? Promise.resolve(false);

@@ -3,6 +3,7 @@ export namespace main {
 	export class FileEntry {
 	    name: string;
 	    isDir: boolean;
+	    size: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileEntry(source);
@@ -12,6 +13,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.isDir = source["isDir"];
+	        this.size = source["size"];
 	    }
 	}
 	export class GitFileStatus {

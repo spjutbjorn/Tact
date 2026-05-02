@@ -65,19 +65,25 @@ export function AppTitlebar({ fileName }: { fileName: string }) {
 interface ContentToolbarProps {
   hasSelection: boolean;
   isMarkdown: boolean;
+  isMedia: boolean;
+  mediaFullscreen: boolean;
   previewMode: boolean;
   isDirty: boolean;
   onTogglePreview: () => void;
   onSave: () => void;
+  onToggleFullscreen: () => void;
 }
 
 export function ContentToolbar({
   hasSelection,
   isMarkdown,
+  isMedia,
+  mediaFullscreen,
   previewMode,
   isDirty,
   onTogglePreview,
   onSave,
+  onToggleFullscreen,
 }: ContentToolbarProps) {
   return (
     <div className="content__toolbar">
@@ -91,6 +97,11 @@ export function ContentToolbar({
           <ToolbarButton dirty={isDirty} onClick={onSave} disabled={!isDirty} title="Save (Cmd+S)">
             <SaveIcon />
           </ToolbarButton>
+          {isMedia && (
+            <ToolbarButton onClick={onToggleFullscreen} title={mediaFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+              {mediaFullscreen ? "⤢" : "⛶"}
+            </ToolbarButton>
+          )}
         </div>
       )}
     </div>

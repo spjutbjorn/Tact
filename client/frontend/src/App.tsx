@@ -37,6 +37,7 @@ export default function App() {
   const [fileListRefreshToken, setFileListRefreshToken] = useState(0);
   const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
+  const [mediaFullscreen, setMediaFullscreen] = useState(false);
 
   useEffect(() => {
     GetCwd().then((cwd) => {
@@ -103,6 +104,9 @@ export default function App() {
   function handleSelectFile(file: string | null) {
     setSelectedFile(file);
     setIsDirty(false);
+    if (!file) {
+      setMediaFullscreen(false);
+    }
     if (file && isMarkdownPath(file)) {
       setPreviewMode(true);
     }
@@ -265,13 +269,15 @@ export default function App() {
   const showDualFiles = showFiles && dualFiles;
   const activePath = activeFileSide === "left" ? leftPath : rightPath;
   const isMd = selectedFile ? isMarkdownPath(selectedFile) : false;
+  const isMedia = selectedFile ? /\.(png|jpe?g|gif|webp|svg|bmp|ico|tif|tiff|avif|mp4|m4v|webm|mov|avi|mkv|ogv)$/i.test(selectedFile) : false;
+  const showPanels = !mediaFullscreen;
 
   return (
     <div className="layout">
       <AppTitlebar fileName={selectedFile ? basename(selectedFile) : "Tact"} />
       <Breadcrumb path={activePath || path} onNavigate={handleNavigate} />
       <div className="workspace">
-        {showFiles && showDualFiles && (
+        {showFiles && showDualFiles && showPanels && (
           <FilePanel
             side="left"
             path={leftPath || path}
@@ -307,10 +313,13 @@ export default function App() {
           <ContentToolbar
             hasSelection={Boolean(selectedFile)}
             isMarkdown={isMd}
+            isMedia={isMedia}
+            mediaFullscreen={mediaFullscreen}
             previewMode={previewMode}
             isDirty={isDirty}
             onTogglePreview={() => setPreviewMode(!previewMode)}
             onSave={handleSave}
+            onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
           />
           {showSettings ? (
             <Settings panelWidth={panelWidth} onPanelWidthChange={setPanelWidth} />
@@ -322,12 +331,14 @@ export default function App() {
               onExitToFolderView={() => setActivePanel("files")}
               previewMode={previewMode}
               onDirtyChange={setIsDirty}
+              isFullscreen={mediaFullscreen}
+              onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
             />
           ) : (
             <span className="content__empty">Select a file to preview</span>
           )}
         </main>
-        {showFiles && (
+        {showFiles && showPanels && (
           <FilePanel
             side="right"
             path={rightPath || path}
@@ -359,13 +370,15 @@ export default function App() {
             refreshToken={fileListRefreshToken}
           />
         )}
-        {showGit && (
+        {showGit && showPanels && (
           <GitPanel 
             width={panelWidth} 
             onWidthChange={setPanelWidth} 
           />
         )}
-        <IconBar activePanel={activePanel} onToggle={togglePanel} dualFiles={dualFiles} onToggleDualFiles={handleToggleDualFiles} />
+        {showPanels && (
+          <IconBar activePanel={activePanel} onToggle={togglePanel} dualFiles={dualFiles} onToggleDualFiles={handleToggleDualFiles} />
+        )}
       </div>
       <div className={`transfer-bar${transferState ? " transfer-bar--active" : ""}`}>
         {transferState && (

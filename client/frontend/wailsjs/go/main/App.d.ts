@@ -6,6 +6,8 @@ export function CopyPath(arg1:string,arg2:string):Promise<boolean>;
 
 export function DeleteFile(arg1:string):Promise<boolean>;
 
+export function DirSize(arg1:string):Promise<number>;
+
 export function GetCwd():Promise<string>;
 
 export function GitAdd(arg1:string):Promise<boolean>;
@@ -33,6 +35,8 @@ export function MovePath(arg1:string,arg2:string):Promise<boolean>;
 export function Navigate(arg1:string):Promise<string>;
 
 export function Ping():Promise<string>;
+
+export function PrepareVideoPath(arg1:string):Promise<string>;
 
 export function ReadBinaryFile(arg1:string):Promise<string>;
 

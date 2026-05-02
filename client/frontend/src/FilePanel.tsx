@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { FileEntry, ListDir, WriteTextFile, Rename } from "./wails";
+import { createPortal } from "react-dom";
+import { DirSize, FileEntry, ListDir, ListVolumes, VolumeInfo, WriteTextFile, Rename } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 
 type FileSide = "left" | "right";
@@ -77,6 +78,118 @@ function DeleteIcon() {
   );
 }
 
+function formatFileSize(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const formatWithDigits = (digits: 0 | 1 | 2) => {
+    const formatted = digits === 0 ? `${Math.round(value)}` : value.toFixed(digits);
+    const digitCount = formatted.replace(/\D/g, "").length;
+    return digitCount <= 3 ? formatted : null;
+  };
+
+  const formatted = formatWithDigits(2) ?? formatWithDigits(1) ?? formatWithDigits(0);
+  if (formatted) return `${formatted} ${units[unit]}`;
+  if (unit < units.length - 1) {
+    return formatFileSize(value * 1024);
+  }
+  return `${Math.round(value)} ${units[unit]}`;
+}
+
+function currentVolume(path: string, volumes: VolumeInfo[]): VolumeInfo {
+  const match = volumes
+    .filter((v) => v.path !== "/")
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((v) => path === v.path || path.startsWith(v.path + "/"));
+  return match ?? volumes.find((v) => v.path === "/") ?? { path: "/", name: "local" };
+}
+
+function VolumePicker({
+  path,
+  volumes,
+  onNavigate,
+  onOpen,
+}: {
+  path: string;
+  volumes: VolumeInfo[];
+  onNavigate: (p: string) => void;
+  onOpen: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const active = currentVolume(path, volumes);
+
+  useEffect(() => {
+    if (!open) return;
+    function close(e: MouseEvent) {
+      const target = e.target as Node;
+      if (!btnRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  function toggle() {
+    if (!open) {
+      onOpen();
+      if (btnRef.current) {
+        const r = btnRef.current.getBoundingClientRect();
+        setDropdownPos({ top: r.bottom + 4, left: r.left });
+      }
+    }
+    setOpen((value) => !value);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        data-volume-picker="true"
+        className={`breadcrumb__link disk-selector__trigger${open ? " breadcrumb__link--open" : ""}`}
+        onClick={toggle}
+      >
+        {active.name}
+        <svg className="disk-selector__caret" viewBox="0 0 10 6" fill="currentColor">
+          <path d="M0 0l5 6 5-6z" />
+        </svg>
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="disk-selector__dropdown"
+            style={{ top: dropdownPos.top, left: dropdownPos.left }}
+          >
+            {volumes.map((v) => (
+              <button
+                key={v.path}
+                type="button"
+                className={`disk-selector__option${v.path === active.path ? " disk-selector__option--active" : ""}`}
+                onClick={() => {
+                  onNavigate(v.path);
+                  setOpen(false);
+                }}
+              >
+                {v.name}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 600;
 
@@ -84,6 +197,7 @@ interface TreeItemProps {
   path: string;
   name: string;
   isDir: boolean;
+  size: number;
   depth: number;
   selectedPath: string | null;
   renamingPath: string | null;
@@ -99,7 +213,7 @@ interface TreeItemProps {
 }
 
 function FileTreeItem({ 
-  path, name, isDir, depth, selectedPath, renamingPath, renameValue,
+  path, name, isDir, size, depth, selectedPath, renamingPath, renameValue,
   onSelectFile, onNavigate, onCursorChange, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown
 }: TreeItemProps) {
   const [expanded, setExpanded] = useState(false);
@@ -152,19 +266,36 @@ function FileTreeItem({
           className={`file-panel__entry ${isDir ? "file-panel__entry--dir" : "file-panel__entry--file"}${active ? " file-panel__entry--active" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 12}px` }}
         >
-          <button type="button" className="file-panel__entry-main" onClick={handleClick}>
+          <button
+            type="button"
+            className="file-panel__entry-main"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              handleClick();
+            }}
+          >
             {isDir && (
-              <span className="file-panel__expand-icon" onClick={toggleExpand}>
+              <span
+                className="file-panel__expand-icon"
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={toggleExpand}
+              >
                 <ChevronIcon expanded={expanded} />
               </span>
             )}
             {isDir ? <FolderIcon /> : <FileIcon />}
             <span>{name}</span>
           </button>
+          <span className="file-panel__size">{isDir ? "" : formatFileSize(size)}</span>
           <button
             type="button"
             className="file-panel__small-btn delete"
             title={isDir ? "Delete folder" : "Delete file"}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
             onClick={(event) => {
               event.stopPropagation();
               onDelete(fullPath);
@@ -182,6 +313,7 @@ function FileTreeItem({
               path={fullPath}
               name={child.name}
               isDir={child.isDir}
+              size={child.size}
               depth={depth + 1}
               selectedPath={selectedPath}
               renamingPath={renamingPath}
@@ -226,6 +358,8 @@ export default function FilePanel({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [folderSize, setFolderSize] = useState(0);
+  const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = () => {
@@ -234,6 +368,20 @@ export default function FilePanel({
 
   useEffect(() => {
     refresh();
+  }, [path, refreshToken]);
+
+  useEffect(() => {
+    if (path === "/") {
+      ListVolumes().then(setVolumes);
+    }
+  }, [path]);
+
+  useEffect(() => {
+    if (!path) {
+      setFolderSize(0);
+      return;
+    }
+    DirSize(path).then((size) => setFolderSize(size || 0));
   }, [path, refreshToken]);
 
   useEffect(() => {
@@ -299,12 +447,17 @@ export default function FilePanel({
           onMoveSelection();
           return;
         }
+        if (key === "enter" || key === "q") {
+          e.preventDefault();
+          openSelectedPath();
+          return;
+        }
       }
     }
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange]);
+  }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange, selectedPath, onNavigate, onSelectFile]);
 
   const filteredEntries = entries.filter(e => showHidden || !e.name.startsWith("."));
 
@@ -400,6 +553,19 @@ export default function FilePanel({
     return rootRef.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(selectedPath)}"]`);
   }
 
+  function openSelectedPath() {
+    const row = getSelectedRow();
+    if (!row || !selectedPath) return false;
+    if (row.dataset.isDir === "true") {
+      onNavigate(selectedPath);
+    } else if (isZipArchivePath(selectedPath)) {
+      onNavigate(`${selectedPath}::`);
+    } else {
+      onSelectFile(selectedPath);
+    }
+    return true;
+  }
+
   function focusPanel() {
     onActivate();
     rootRef.current?.focus();
@@ -419,22 +585,22 @@ export default function FilePanel({
       e.preventDefault();
       if (path && path !== "/") {
         onNavigate(dirname(path));
+      } else if (!selectedPath) {
+        rootRef.current?.querySelector<HTMLButtonElement>('[data-volume-picker="true"]')?.click();
       }
       focusPanel();
       return;
     }
 
     if (key === "enter" || key === "q") {
-      const row = getSelectedRow();
-      if (!row || !selectedPath) return;
-      e.preventDefault();
-      if (row.dataset.isDir === "true") {
-        onNavigate(selectedPath);
-      } else if (isZipArchivePath(selectedPath)) {
-        onNavigate(`${selectedPath}::`);
-      } else {
-        onSelectFile(selectedPath);
+      if (path === "/" && !selectedPath) {
+        e.preventDefault();
+        rootRef.current?.querySelector<HTMLButtonElement>('[data-volume-picker="true"]')?.click();
+        focusPanel();
+        return;
       }
+      e.preventDefault();
+      openSelectedPath();
       focusPanel();
       return;
     }
@@ -494,23 +660,40 @@ export default function FilePanel({
             />
           </li>
         )}
-        {path && path !== "/" && (
+        {path && path !== "/" ? (
           <li>
           <button
             data-file-row="true"
             data-path={dirname(path)}
             data-is-dir="true"
             className={`file-panel__entry file-panel__entry--dir${selectedPath === dirname(path) ? " file-panel__entry--active" : ""}`}
-            onClick={() => {
-                handleRowClick(dirname(path), true);
-                onNavigate(dirname(path));
-              }}
-            >
+            onMouseDown={(event) => {
+              event.preventDefault();
+              handleRowClick(dirname(path), true);
+              onNavigate(dirname(path));
+            }}
+          >
+            <div className="file-panel__entry-left">
+              <FolderIcon />
+              <span>..</span>
+            </div>
+            <span className="file-panel__size">{formatFileSize(folderSize)}</span>
+          </button>
+          </li>
+        ) : (
+          <li className="file-panel__root-volume-row">
+            <div className="file-panel__entry file-panel__entry--dir">
               <div className="file-panel__entry-left">
                 <FolderIcon />
-                <span>..</span>
+                <span>Choose unit</span>
               </div>
-            </button>
+              <VolumePicker
+                path={path}
+                volumes={volumes}
+                onNavigate={onNavigate}
+                onOpen={() => ListVolumes().then(setVolumes)}
+              />
+            </div>
           </li>
         )}
         {filteredEntries.map((e) => (
@@ -519,6 +702,7 @@ export default function FilePanel({
             path={path}
             name={e.name}
             isDir={e.isDir}
+            size={e.size}
             depth={0}
             selectedPath={selectedPath}
             renamingPath={renamingPath}

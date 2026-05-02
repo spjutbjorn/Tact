@@ -545,6 +545,54 @@ body {
   overflow: hidden;
 }
 
+.media-viewer {
+  position: relative;
+}
+
+.media-viewer__surface {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.media-viewer__fullscreen {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #e8e8e8;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.media-viewer__fullscreen:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.media-viewer--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  background: #000;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: block;
+}
+
 .video-viewer__video {
   max-width: 100%;
   max-height: 100%;
@@ -557,9 +605,24 @@ body {
 .image-viewer {
   flex: 1;
   overflow: auto;
-  padding: 2rem;
   background: #0a0a0a;
   text-align: center;
+}
+
+.image-viewer .media-viewer__surface {
+  padding: 2rem;
+}
+
+.image-viewer.media-viewer--fullscreen .media-viewer__surface {
+  padding: 0;
+}
+
+.video-viewer .media-viewer__surface {
+  padding: 0;
+}
+
+.video-viewer.media-viewer--fullscreen .media-viewer__surface {
+  padding: 0;
 }
 
 .image-viewer__img {
@@ -568,6 +631,28 @@ body {
   display: inline-block;
   border-radius: 0;
   box-shadow: none;
+}
+
+.media-viewer--fullscreen .image-viewer__img,
+.media-viewer--fullscreen .video-viewer__video {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100vw;
+  max-height: none;
+  object-fit: initial;
+  flex: 0 0 auto;
+  margin: 0 auto;
+}
+
+.media-viewer--fullscreen .media-viewer__surface {
+  display: block;
+  width: 100vw;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
+  padding: 1rem 0 2rem;
+  text-align: center;
 }
 
 /* ── File panel ── */
@@ -746,6 +831,15 @@ body {
   text-align: left;
   padding: 0;
   cursor: inherit;
+}
+
+.file-panel__size {
+  flex-shrink: 0;
+  min-width: 62px;
+  text-align: right;
+  font-size: 0.72rem;
+  color: #666;
+  font-variant-numeric: tabular-nums;
 }
 
 .file-panel__entry-left {

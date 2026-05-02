@@ -10,6 +10,10 @@ export function DeleteFile(arg1) {
   return window['go']['main']['App']['DeleteFile'](arg1);
 }
 
+export function DirSize(arg1) {
+  return window['go']['main']['App']['DirSize'](arg1);
+}
+
 export function GetCwd() {
   return window['go']['main']['App']['GetCwd']();
 }
@@ -64,6 +68,10 @@ export function Navigate(arg1) {
 
 export function Ping() {
   return window['go']['main']['App']['Ping']();
+}
+
+export function PrepareVideoPath(arg1) {
+  return window['go']['main']['App']['PrepareVideoPath'](arg1);
 }
 
 export function ReadBinaryFile(arg1) {

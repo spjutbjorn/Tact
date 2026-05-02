@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"tact/internal/backend"
 )
 
@@ -363,6 +364,7 @@ type App struct {
 type FileEntry struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"isDir"`
+	Size  int64  `json:"size"`
 }
 
 func NewApp() *App {
@@ -506,9 +508,61 @@ func (a *App) ReadDocxFile(path string) string {
 	}
 
 	decoder := xml.NewDecoder(bytes.NewReader(docData))
-	var builder strings.Builder
+	var blocks []string
+	var paragraph strings.Builder
+	var cell strings.Builder
+	var row []string
 	inText := false
-	newParagraph := false
+	inCell := false
+	inParagraph := false
+
+	flushParagraph := func() {
+		text := strings.TrimSpace(paragraph.String())
+		paragraph.Reset()
+		if text == "" {
+			if inCell {
+				if cell.Len() > 0 && !strings.HasSuffix(cell.String(), "\n\n") {
+					cell.WriteString("\n\n")
+				}
+			} else if len(blocks) > 0 && blocks[len(blocks)-1] != "" {
+				blocks = append(blocks, "")
+			}
+			return
+		}
+		if inCell {
+			if cell.Len() > 0 && !strings.HasSuffix(cell.String(), "\n") {
+				cell.WriteString("\n")
+			}
+			cell.WriteString(text)
+		} else {
+			blocks = append(blocks, text)
+		}
+	}
+
+	flushCell := func() {
+		flushParagraph()
+		text := strings.TrimSpace(cell.String())
+		cell.Reset()
+		if text == "" {
+			row = append(row, "")
+			return
+		}
+		row = append(row, text)
+	}
+
+	flushRow := func() {
+		if len(row) == 0 {
+			return
+		}
+		for len(row) > 0 && row[len(row)-1] == "" {
+			row = row[:len(row)-1]
+		}
+		if len(row) == 0 {
+			return
+		}
+		blocks = append(blocks, strings.Join(row, "\t"))
+		row = nil
+	}
 
 	for {
 		tok, err := decoder.Token()
@@ -523,38 +577,68 @@ func (a *App) ReadDocxFile(path string) string {
 		case xml.StartElement:
 			switch el.Name.Local {
 			case "p":
-				if builder.Len() > 0 {
-					builder.WriteString("\n\n")
+				if inParagraph {
+					flushParagraph()
 				}
-				newParagraph = true
+				inParagraph = true
+				paragraph.Reset()
+				inText = false
 			case "t":
 				inText = true
 			case "tab":
 				if inText {
-					builder.WriteString("\t")
+					if inParagraph {
+						paragraph.WriteString("\t")
+					} else if inCell {
+						cell.WriteString("\t")
+					}
 				}
 			case "br", "cr":
 				if inText {
-					builder.WriteString("\n")
+					if inParagraph {
+						paragraph.WriteString("\n")
+					} else if inCell {
+						cell.WriteString("\n")
+					}
 				}
+			case "tc":
+				inCell = true
+				cell.Reset()
+			case "tr":
+				row = nil
 			}
 		case xml.EndElement:
-			if el.Name.Local == "t" {
+			switch el.Name.Local {
+			case "t":
 				inText = false
+			case "p":
+				if inParagraph {
+					flushParagraph()
+					inParagraph = false
+				}
+			case "tc":
+				flushCell()
+				inCell = false
+			case "tr":
+				flushRow()
 			}
 		case xml.CharData:
 			if !inText {
 				continue
 			}
 			text := string([]byte(el))
-			builder.WriteString(text)
-			if newParagraph {
-				newParagraph = false
+			if inParagraph {
+				paragraph.WriteString(text)
+			} else if inCell {
+				cell.WriteString(text)
 			}
 		}
 	}
 
-	return strings.TrimSpace(builder.String())
+	flushParagraph()
+	flushRow()
+
+	return strings.TrimSpace(strings.Join(blocks, "\n\n"))
 }
 
 func (a *App) WriteTextFile(path string, content string) bool {
@@ -567,6 +651,45 @@ func (a *App) ReadBinaryFile(path string) string {
 		return ""
 	}
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+func (a *App) PrepareVideoPath(path string) string {
+	if !strings.EqualFold(filepath.Ext(path), ".mkv") {
+		return path
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+
+	cacheDir := filepath.Join(os.TempDir(), "tact-video-cache")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return ""
+	}
+
+	stamp := info.ModTime().UTC().Format(time.RFC3339Nano)
+	outPath := filepath.Join(cacheDir, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))+"-"+stamp+".mp4")
+	if cachedInfo, err := os.Stat(outPath); err == nil && cachedInfo.Size() > 0 {
+		return outPath
+	}
+
+	cmd := exec.Command(
+		"ffmpeg",
+		"-y",
+		"-i", path,
+		"-c:v", "libx264",
+		"-preset", "veryfast",
+		"-crf", "23",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac",
+		"-movflags", "+faststart",
+		outPath,
+	)
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return outPath
 }
 
 func (a *App) Rename(oldPath, newPath string) bool {
@@ -611,7 +734,16 @@ func (a *App) ListDir(path string) []FileEntry {
 
 		result := make([]FileEntry, 0, len(children))
 		for name, isDir := range children {
-			result = append(result, FileEntry{Name: name, IsDir: isDir})
+			size := int64(0)
+			if !isDir {
+				for _, f := range zr.File {
+					if strings.TrimSuffix(f.Name, "/") == prefix+name {
+						size = int64(f.UncompressedSize64)
+						break
+					}
+				}
+			}
+			result = append(result, FileEntry{Name: name, IsDir: isDir, Size: size})
 		}
 		sort.Slice(result, func(i, j int) bool {
 			if result[i].IsDir != result[j].IsDir {
@@ -628,7 +760,13 @@ func (a *App) ListDir(path string) []FileEntry {
 	}
 	result := make([]FileEntry, 0, len(entries))
 	for _, e := range entries {
-		result = append(result, FileEntry{Name: e.Name(), IsDir: e.IsDir()})
+		size := int64(0)
+		if !e.IsDir() {
+			if info, err := e.Info(); err == nil {
+				size = info.Size()
+			}
+		}
+		result = append(result, FileEntry{Name: e.Name(), IsDir: e.IsDir(), Size: size})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].IsDir != result[j].IsDir {
@@ -637,4 +775,58 @@ func (a *App) ListDir(path string) []FileEntry {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+
+func (a *App) DirSize(path string) int64 {
+	if archivePath, innerPath, ok := splitVirtualZipPath(path); ok {
+		data, err := os.ReadFile(archivePath)
+		if err != nil {
+			return 0
+		}
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return 0
+		}
+
+		prefix := innerPath
+		if prefix != "" && !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+
+		var total int64
+		for _, f := range zr.File {
+			name := strings.TrimSuffix(f.Name, "/")
+			if !strings.HasPrefix(name, prefix) || f.FileInfo().IsDir() {
+				continue
+			}
+			total += int64(f.UncompressedSize64)
+		}
+		return total
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	if !info.IsDir() {
+		return info.Size()
+	}
+
+	var total int64
+	_ = filepath.WalkDir(path, func(walkPath string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		fileInfo, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		total += fileInfo.Size()
+		return nil
+	})
+	return total
 }
