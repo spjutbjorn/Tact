@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/base64"
+	"html"
 	"encoding/xml"
 	"io"
 	"os"
@@ -481,6 +482,31 @@ func (a *App) ReadDocxFile(path string) string {
 	if !ok {
 		return ""
 	}
+
+	temp, err := os.CreateTemp("", "tact-docx-*.docx")
+	if err == nil {
+		tempPath := temp.Name()
+		_, writeErr := temp.Write(data)
+		closeErr := temp.Close()
+		if writeErr == nil && closeErr == nil {
+			defer os.Remove(tempPath)
+			cmd := exec.Command(
+				"pandoc",
+				tempPath,
+				"-f", "docx",
+				"-t", "html",
+				"--wrap=none",
+				"--embed-resources",
+				"--standalone",
+			)
+			if out, err := cmd.Output(); err == nil && len(out) > 0 {
+				return string(out)
+			}
+		} else {
+			_ = os.Remove(tempPath)
+		}
+	}
+
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return ""
@@ -638,7 +664,87 @@ func (a *App) ReadDocxFile(path string) string {
 	flushParagraph()
 	flushRow()
 
-	return strings.TrimSpace(strings.Join(blocks, "\n\n"))
+	var out strings.Builder
+	out.WriteString(`<div class="docx-doc">`)
+	inTable := false
+	flushTable := func() {
+		if inTable {
+			out.WriteString(`</tbody></table>`)
+			inTable = false
+		}
+	}
+	for _, block := range blocks {
+		text := strings.TrimSpace(block)
+		if text == "" {
+			flushTable()
+			continue
+		}
+		if strings.Contains(block, "\t") {
+			cells := strings.Split(block, "\t")
+			if !inTable {
+				out.WriteString(`<table class="docx-table"><tbody>`)
+				inTable = true
+			}
+			out.WriteString("<tr>")
+			for _, cell := range cells {
+				out.WriteString("<td>")
+				out.WriteString(html.EscapeString(strings.TrimSpace(cell)))
+				out.WriteString("</td>")
+			}
+			out.WriteString("</tr>")
+			continue
+		}
+		flushTable()
+		out.WriteString("<p>")
+		out.WriteString(html.EscapeString(text))
+		out.WriteString("</p>")
+	}
+	flushTable()
+	out.WriteString(`</div>`)
+	return out.String()
+}
+
+func (a *App) ReadPandocHtml(path string) string {
+	data, ok := readPathBytes(path)
+	if !ok {
+		return ""
+	}
+
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	if ext != "epub" && ext != "rtf" {
+		return ""
+	}
+
+	temp, err := os.CreateTemp("", "tact-rich-*."+ext)
+	if err != nil {
+		return ""
+	}
+	tempPath := temp.Name()
+	if _, writeErr := temp.Write(data); writeErr != nil {
+		_ = temp.Close()
+		_ = os.Remove(tempPath)
+		return ""
+	}
+	if closeErr := temp.Close(); closeErr != nil {
+		_ = os.Remove(tempPath)
+		return ""
+	}
+	defer os.Remove(tempPath)
+
+	cmd := exec.Command(
+		"pandoc",
+		tempPath,
+		"-f", ext,
+		"-t", "html",
+		"--wrap=none",
+		"--standalone",
+		"--embed-resources",
+	)
+	out, err := cmd.Output()
+	if err != nil || len(out) == 0 {
+		return ""
+	}
+	return string(out)
 }
 
 func (a *App) WriteTextFile(path string, content string) bool {

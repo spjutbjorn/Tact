@@ -42,6 +42,8 @@ export function ReadBinaryFile(arg1:string):Promise<string>;
 
 export function ReadDocxFile(arg1:string):Promise<string>;
 
+export function ReadPandocHtml(arg1:string):Promise<string>;
+
 export function ReadTextFile(arg1:string):Promise<string>;
 
 export function Rename(arg1:string,arg2:string):Promise<boolean>;

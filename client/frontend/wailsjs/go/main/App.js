@@ -82,6 +82,10 @@ export function ReadDocxFile(arg1) {
   return window['go']['main']['App']['ReadDocxFile'](arg1);
 }
 
+export function ReadPandocHtml(arg1) {
+  return window['go']['main']['App']['ReadPandocHtml'](arg1);
+}
+
 export function ReadTextFile(arg1) {
   return window['go']['main']['App']['ReadTextFile'](arg1);
 }

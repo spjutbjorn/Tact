@@ -49,6 +49,18 @@ export function isDocxPath(path: string): boolean {
   return /\.docx$/i.test(path);
 }
 
+export function isEpubPath(path: string): boolean {
+  return /\.epub$/i.test(path);
+}
+
+export function isRtfPath(path: string): boolean {
+  return /\.rtf$/i.test(path);
+}
+
+export function isTextLikePath(path: string): boolean {
+  return /\.(txt|md|markdown|json|yaml|yml|xml|csv|log|toml|ini|conf|rs|go|ts|tsx|js|jsx|css|html|htm|c|h|cpp|hpp|py|sh|zsh|bash|sql|lua|java|kt|swift|rb|php|cs|sln|csproj|mdx)$/i.test(path);
+}
+
 export function isZipArchivePath(path: string): boolean {
   return /\.zip$/i.test(path);
 }

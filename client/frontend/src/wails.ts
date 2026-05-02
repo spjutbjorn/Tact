@@ -22,6 +22,7 @@ interface WailsApp {
   ListVolumes: () => Promise<VolumeInfo[]>;
   ReadTextFile: (path: string) => Promise<string>;
   ReadDocxFile: (path: string) => Promise<string>;
+  ReadPandocHtml: (path: string) => Promise<string>;
   WriteTextFile: (path: string, content: string) => Promise<boolean>;
   ReadBinaryFile: (path: string) => Promise<string>;
   PrepareVideoPath: (path: string) => Promise<string>;
@@ -64,6 +65,9 @@ export const ReadTextFile = (path: string): Promise<string> =>
 
 export const ReadDocxFile = (path: string): Promise<string> =>
   app()?.ReadDocxFile(path) ?? Promise.resolve("");
+
+export const ReadPandocHtml = (path: string): Promise<string> =>
+  app()?.ReadPandocHtml(path) ?? Promise.resolve("");
 
 export const WriteTextFile = (path: string, content: string): Promise<boolean> =>
   app()?.WriteTextFile(path, content) ?? Promise.resolve(false);

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { renderAsync } from "docx-preview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadTextFile, WriteTextFile, ListDir } from "./wails";
-import { basename, dirname, isDocxPath, isMarkdownPath, isPdfPath, joinPath } from "./path";
+import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir } from "./wails";
+import { basename, dirname, isDocxPath, isEpubPath, isMarkdownPath, isPdfPath, isRtfPath, isTextLikePath, joinPath } from "./path";
 
 const VIDEO_MIME: Record<string, string> = {
   mp4: "video/mp4", m4v: "video/mp4",
@@ -206,6 +207,26 @@ function PdfViewer({ path }: { path: string }) {
   return <embed src={url} type="application/pdf" className="pdf-viewer" />;
 }
 
+function HtmlDocumentViewer({ path }: { path: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHtml(null);
+    ReadPandocHtml(path).then((next) => {
+      if (!cancelled) setHtml(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (html === null) return <div className="viewer-loading">Loading…</div>;
+  if (!html) return <div className="viewer-loading viewer-loading--unsupported">No file support for this format.</div>;
+
+  return <iframe className="docx-viewer__frame" srcDoc={html} title={basename(path)} />;
+}
+
 function ImageViewer({
   path,
   mime,
@@ -241,18 +262,77 @@ function ImageViewer({
 }
 
 function DocxViewer({ path }: { path: string }) {
-  const [content, setContent] = useState<string | null>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    setContent(null);
-    ReadDocxFile(path).then(setContent);
-  }, [path]);
+    let cancelled = false;
+    const frame = frameRef.current;
+    const doc = frame?.contentDocument;
+    if (!frame || !doc) return;
+    doc.open();
+    doc.write("<!doctype html><html><head></head><body></body></html>");
+    doc.close();
 
-  if (content === null) return <div className="viewer-loading">Loading…</div>;
+    ReadBinaryFile(path).then((base64) => {
+      if (cancelled || !frame?.contentDocument || !base64) return;
+      const iframeDoc = frame.contentDocument;
+      if (!iframeDoc) return;
+      const body = iframeDoc.body;
+      const head = iframeDoc.head;
+      if (!body || !head) return;
+      body.innerHTML = "";
+      head.innerHTML = "";
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      renderAsync(bytes, body, head, {
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        className: "docx",
+        inWrapper: true,
+        hideWrapperOnPrint: false,
+        trimXmlDeclaration: true,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+        ignoreLastRenderedPageBreak: true,
+        useBase64URL: false,
+        renderChanges: false,
+        renderComments: false,
+        renderAltChunks: true,
+        debug: false,
+        experimental: false,
+      }).catch(() => {
+        if (iframeDoc && !cancelled) {
+          body.innerHTML = "<div class=\"docx-viewer__empty\">Unable to render document.</div>";
+        }
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (frame?.contentDocument) {
+        frame.contentDocument.body.innerHTML = "";
+        frame.contentDocument.head.innerHTML = "";
+      }
+    };
+  }, [path]);
 
   return (
     <div className="docx-viewer">
-      <pre className="docx-viewer__text">{content || "Document is empty."}</pre>
+      <iframe ref={frameRef} className="docx-viewer__frame" title={basename(path)} />
+    </div>
+  );
+}
+
+function NoSupportViewer({ path }: { path: string }) {
+  return (
+    <div className="viewer-loading viewer-loading--unsupported">
+      <div>{basename(path)}</div>
+      <div>No file support for this format.</div>
     </div>
   );
 }
@@ -423,9 +503,11 @@ export default function FileViewer({ path, onSelectFile, onExitToFolderView, pre
 }) {
   if (isPdfPath(path)) return <PdfViewer path={path} />;
   if (isDocxPath(path)) return <DocxViewer path={path} />;
+  if (isEpubPath(path) || isRtfPath(path)) return <HtmlDocumentViewer path={path} />;
   const imgMime = imageMime(path);
   if (imgMime) return <ImageViewer path={path} mime={imgMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
   const vidMime = videoMime(path);
   if (vidMime) return <VideoViewer path={path} mime={vidMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
+  if (!isMarkdownPath(path) && !isTextLikePath(path)) return <NoSupportViewer path={path} />;
   return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
 }
