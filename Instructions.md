@@ -29,7 +29,8 @@
 - Visar innehållet i markerad fil i huvudytan.
 - Markdown kan växla mellan edit och preview.
 - DOCX, EPUB, RTF, PDF, bilder, video och text öppnas i anpassade viewers.
-- `.cjs`, `.mjs`, `.cts`, `.mts`, `.flow`, `.bnf`, `.applescript`, `.mod`, `.sum`, `.md5` och `.map` öppnas som text.
+- Vanliga textändelser som `.cjs`, `.mjs`, `.cts`, `.mts`, `.flow`, `.bnf`, `.applescript`, `.mod`, `.sum`, `.md5`, `.map`, `.proto`, `.svelte`, `.iml`, `.plist`, `.mdc`, `.manifest`, `.version`, `.work`, `.m`, `.jsonl`, `.ndjson`, `.tex`, `.bib`, `.bibtex`, `.rmd` och `.qmd` öppnas som text.
+- `LICENSE`, `COPYING` och `NOTICE` öppnas också som text även utan filändelse.
 - Save skriver tillbaka ändringar i edit-läget.
 - MKV provas direkt först och transkodas bara om direktuppspelning misslyckas.
 - Okända binärer visas som `No file support for this format.`
@@ -41,6 +42,16 @@
 - Revert-ikonen längst till höger återställer filen eller foldern.
 - Push-knappen skickar ändringar till remote.
 - Amends kan slå på senaste commit-meddelandet i commitfältet.
+
+## Terminals
+- Terminalerna visas som en sidopanel med AI-klienter överst och en sessionslista under.
+- Klick på en klient startar en ny session för Codex, Copilot, Claude, Gemini eller Junie.
+- En ny session läggs direkt till i sessionslistan med sitt namn.
+- Klick på en session växlar main window till den terminalen.
+- Main window är terminalytan för den aktiva sessionen.
+- Terminalen använder en riktig PTY-baserad terminalrenderer i main window och har dessutom en inputrad längst ner för att skicka en linje.
+- Terminalsessioner startar i den folder som breadcrumb visar när de skapas.
+- Sidopanelen kan döljas utan att den aktiva terminalsessionen försvinner ur main window.
 
 ## Settings
 - Här justeras panelbredden.

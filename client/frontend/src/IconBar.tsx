@@ -41,6 +41,17 @@ const ICONS: Icon[] = [
       </svg>
     ),
   },
+  {
+    id: "terminals",
+    title: "AI Terminals",
+    svg: () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 6h16v12H4z" />
+        <path d="M7 10l3 2-3 2" />
+        <path d="M12 14h5" />
+      </svg>
+    ),
+  },
 ];
 
 function GearIcon() {

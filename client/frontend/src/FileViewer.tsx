@@ -3,7 +3,7 @@ import { renderAsync } from "docx-preview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir } from "./wails";
-import { basename, dirname, isDocxPath, isEpubPath, isMarkdownPath, isPdfPath, isRtfPath, isTextLikePath, joinPath } from "./path";
+import { basename, dirname, isDocxPath, isEpubPath, isLicensePath, isMarkdownPath, isPdfPath, isRtfPath, isTextLikePath, joinPath } from "./path";
 
 const VIDEO_MIME: Record<string, string> = {
   mp4: "video/mp4", m4v: "video/mp4",
@@ -537,6 +537,6 @@ export default function FileViewer({ path, onSelectFile, onExitToFolderView, pre
   if (vidMime) return <VideoViewer path={path} mime={vidMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
   const audMime = audioMime(path);
   if (audMime) return <AudioViewer path={path} mime={audMime} />;
-  if (!isMarkdownPath(path) && !isTextLikePath(path)) return <NoSupportViewer path={path} />;
-  return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
+  if (isLicensePath(path) || isMarkdownPath(path) || isTextLikePath(path)) return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
+  return <NoSupportViewer path={path} />;
 }

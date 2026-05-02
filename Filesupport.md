@@ -1,7 +1,8 @@
 # File Support
 
 - `.md`, `.markdown`: opens in the editor, with markdown preview mode available.
-- `.cjs`, `.mjs`, `.cts`, `.mts`, `.flow`, `.bnf`, `.applescript`, `.mod`, `.sum`, `.md5`, `.map`: opens in the editor as text.
+- Common source, markup and config text files like `.cjs`, `.mjs`, `.cts`, `.mts`, `.flow`, `.bnf`, `.applescript`, `.mod`, `.sum`, `.md5`, `.map`, `.proto`, `.svelte`, `.iml`, `.plist`, `.mdc`, `.manifest`, `.version`, `.work`, `.m`, `.jsonl`, `.ndjson`, `.tex`, `.bib`, `.bibtex`, `.rmd` and `.qmd`: opens in the editor as text.
+- `LICENSE`, `COPYING`, `NOTICE`: opens in the editor as text.
 - `.docx`: opens as a read-only document preview in the main view.
 - `.epub`: opens as a rendered document preview in the main view via pandoc.
 - `.rtf`: opens as a rendered document preview in the main view via pandoc.

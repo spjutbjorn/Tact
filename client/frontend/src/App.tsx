@@ -5,8 +5,11 @@ import FilePanel from "./FilePanel";
 import FileViewer from "./FileViewer";
 import GitPanel from "./GitPanel";
 import IconBar from "./IconBar";
+import TerminalPanel from "./TerminalPanel";
+import TerminalView from "./TerminalView";
 import Settings from "./Settings";
-import { CopyPath, DeleteFile, GetCwd, MovePath, Navigate } from "./wails";
+import { CopyPath, DeleteFile, GetCwd, CloseTerminalSession, LaunchTerminalProfileAt, MovePath, Navigate, SendTerminalInput, TerminalProfiles, TerminalSessions, type TerminalProfile, type TerminalSession } from "./wails";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, isMarkdownPath } from "./path";
 
 const PANEL_WIDTH_KEY = "tact.panelWidth";
@@ -20,9 +23,17 @@ function loadPanelWidth(): number {
   return Number.isFinite(n) ? Math.max(120, Math.min(600, n)) : DEFAULT_PANEL_WIDTH;
 }
 
+function pickActiveSessionId(current: string | null, sessions: TerminalSession[]): string | null {
+  if (current && sessions.some((session) => session.id === current)) {
+    return current;
+  }
+  return sessions[0]?.id ?? null;
+}
+
 export default function App() {
   const [path, setPath] = useState("");
   const [activePanel, setActivePanel] = useState<string | null>("files");
+  const [terminalSidebarOpen, setTerminalSidebarOpen] = useState(false);
   const [dualFiles, setDualFiles] = useState(false);
   const [activeFileSide, setActiveFileSide] = useState<FileSide>("right");
   const [leftMirrorsRight, setLeftMirrorsRight] = useState(true);
@@ -34,6 +45,10 @@ export default function App() {
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
   const [isDirty, setIsDirty] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
+  const [terminalProfiles, setTerminalProfiles] = useState<TerminalProfile[]>([]);
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [activeTerminalSessionId, setActiveTerminalSessionId] = useState<string | null>(null);
+  const [terminalOutputBySession, setTerminalOutputBySession] = useState<Record<string, string>>({});
   const [fileListRefreshToken, setFileListRefreshToken] = useState(0);
   const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
@@ -45,6 +60,49 @@ export default function App() {
       setLeftPath(cwd);
       setRightPath(cwd);
     });
+  }, []);
+
+  useEffect(() => {
+    TerminalProfiles().then((profiles) => {
+      setTerminalProfiles(profiles);
+    });
+  }, []);
+
+  useEffect(() => {
+    TerminalSessions().then((sessions) => {
+      setTerminalSessions(sessions);
+      setActiveTerminalSessionId((current) => pickActiveSessionId(current, sessions));
+    });
+  }, []);
+
+  useEffect(() => {
+    const offOutput = EventsOn("terminal:output", (sessionID: string, chunk: string) => {
+      setTerminalOutputBySession((current) => ({
+        ...current,
+        [sessionID]: (current[sessionID] ?? "") + chunk,
+      }));
+    });
+    const offSessions = EventsOn("terminal:sessions", () => {
+      TerminalSessions().then((sessions) => {
+        setTerminalSessions(sessions);
+        setActiveTerminalSessionId((current) => pickActiveSessionId(current, sessions));
+      });
+    });
+    const offExited = EventsOn("terminal:exited", (sessionID: string) => {
+      TerminalSessions().then((sessions) => {
+        setTerminalSessions(sessions);
+      });
+      setTerminalSessions((current) =>
+        current.map((session) =>
+          session.id === sessionID ? { ...session, running: false } : session,
+        ),
+      );
+    });
+    return () => {
+      offOutput();
+      offSessions();
+      offExited();
+    };
   }, []);
 
   useEffect(() => {
@@ -113,6 +171,19 @@ export default function App() {
   }
 
   function togglePanel(id: string) {
+    if (id === "terminals") {
+      setActivePanel((prev) => {
+        if (prev !== "terminals") {
+          setTerminalSidebarOpen(true);
+          return "terminals";
+        }
+        setTerminalSidebarOpen((current) => !current);
+        return prev;
+      });
+      return;
+    }
+
+    setTerminalSidebarOpen(false);
     setActivePanel((prev) => {
       const next = prev === id ? null : id;
       if (id === "files" && next !== "files") {
@@ -138,6 +209,60 @@ export default function App() {
       setFileListRefreshToken((value) => value + 1);
     } else {
       alert("Delete failed");
+    }
+  };
+
+  const handleLaunchTerminal = async (id: string, dir: string) => {
+    const sessionID = await LaunchTerminalProfileAt(id, dir);
+    if (!sessionID) {
+      alert("Failed to launch terminal");
+      return;
+    }
+    const profile = terminalProfiles.find((item) => item.id === id);
+    if (profile) {
+      const optimisticSession: TerminalSession = {
+        id: sessionID,
+        profileId: profile.id,
+        name: profile.name,
+        model: profile.model,
+        command: profile.command,
+        running: true,
+        startedAt: new Date().toISOString(),
+      };
+      setTerminalSessions((current) => {
+        const next = current.filter((session) => session.id !== sessionID);
+        return [optimisticSession, ...next];
+      });
+    }
+    setActiveTerminalSessionId(sessionID);
+    setActivePanel("terminals");
+    setTerminalSidebarOpen(true);
+    const sessions = await TerminalSessions();
+    setTerminalSessions(sessions);
+    setActiveTerminalSessionId(sessionID);
+  };
+
+  const handleTerminalInput = async (data: string) => {
+    if (!activeTerminalSessionId) return;
+    await SendTerminalInput(activeTerminalSessionId, data);
+  };
+
+  const handleCloseTerminalSession = async (sessionID: string) => {
+    const ok = await CloseTerminalSession(sessionID);
+    if (ok) {
+      setTerminalOutputBySession((current) => {
+        const next = { ...current };
+        delete next[sessionID];
+        return next;
+      });
+      const sessions = await TerminalSessions();
+      setTerminalSessions(sessions);
+      setActiveTerminalSessionId((current) => pickActiveSessionId(current === sessionID ? null : current, sessions));
+      if (sessions.length === 0) {
+        setTerminalSidebarOpen(false);
+      }
+    } else {
+      alert("Failed to close session");
     }
   };
 
@@ -266,15 +391,19 @@ export default function App() {
   const showSettings = activePanel === "settings";
   const showFiles = activePanel === "files";
   const showGit = activePanel === "git";
+  const showTerminals = activePanel === "terminals";
   const showDualFiles = showFiles && dualFiles;
   const activePath = activeFileSide === "left" ? leftPath : rightPath;
   const isMd = selectedFile ? isMarkdownPath(selectedFile) : false;
   const isMedia = selectedFile ? /\.(png|jpe?g|gif|webp|svg|bmp|ico|tif|tiff|avif|mp4|m4v|webm|mov|avi|mkv|ogv)$/i.test(selectedFile) : false;
   const showPanels = !mediaFullscreen;
+  const activeTerminalSession = terminalSessions.find((session) => session.id === activeTerminalSessionId) ?? terminalSessions[0] ?? null;
+  const activeTerminalOutput = activeTerminalSession ? terminalOutputBySession[activeTerminalSession.id] ?? "" : "";
+  const titleLabel = showTerminals ? activeTerminalSession?.name ?? "Terminals" : selectedFile ? basename(selectedFile) : "Tact";
 
   return (
     <div className="layout">
-      <AppTitlebar fileName={selectedFile ? basename(selectedFile) : "Tact"} />
+      <AppTitlebar fileName={titleLabel} />
       <Breadcrumb path={activePath || path} onNavigate={handleNavigate} />
       <div className="workspace">
         {showFiles && showDualFiles && showPanels && (
@@ -310,19 +439,29 @@ export default function App() {
           />
         )}
         <main className="content">
-          <ContentToolbar
-            hasSelection={Boolean(selectedFile)}
-            isMarkdown={isMd}
-            isMedia={isMedia}
-            mediaFullscreen={mediaFullscreen}
-            previewMode={previewMode}
-            isDirty={isDirty}
-            onTogglePreview={() => setPreviewMode(!previewMode)}
-            onSave={handleSave}
-            onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
-          />
+          {!showTerminals && (
+            <ContentToolbar
+              hasSelection={Boolean(selectedFile)}
+              isMarkdown={isMd}
+              isMedia={isMedia}
+              mediaFullscreen={mediaFullscreen}
+              previewMode={previewMode}
+              isDirty={isDirty}
+              onTogglePreview={() => setPreviewMode(!previewMode)}
+              onSave={handleSave}
+              onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
+            />
+          )}
           {showSettings ? (
             <Settings panelWidth={panelWidth} onPanelWidthChange={setPanelWidth} />
+          ) : showTerminals ? (
+          <TerminalView
+              session={activeTerminalSession}
+              output={activeTerminalOutput}
+              onInput={(data) => {
+                void handleTerminalInput(data);
+              }}
+            />
           ) : selectedFile ? (
             <FileViewer 
               key={selectedFile} 
@@ -338,6 +477,26 @@ export default function App() {
             <span className="content__empty">Select a file to preview</span>
           )}
         </main>
+        {showTerminals && terminalSidebarOpen && showPanels && (
+          <TerminalPanel
+            width={panelWidth}
+            profiles={terminalProfiles}
+            sessions={terminalSessions}
+            activeSessionId={activeTerminalSessionId}
+            launchDir={activePath || path || ""}
+            onLaunchProfile={(id, dir) => {
+              void handleLaunchTerminal(id, dir);
+            }}
+            onSelectSession={(id) => {
+              setActivePanel("terminals");
+              setTerminalSidebarOpen(true);
+              setActiveTerminalSessionId(id);
+            }}
+            onCloseSession={(id) => {
+              void handleCloseTerminalSession(id);
+            }}
+          />
+        )}
         {showFiles && showPanels && (
           <FilePanel
             side="right"

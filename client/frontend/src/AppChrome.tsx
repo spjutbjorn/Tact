@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { TerminalProfile } from "./wails";
 
 function EditIcon() {
   return (
@@ -66,42 +67,69 @@ interface ContentToolbarProps {
   hasSelection: boolean;
   isMarkdown: boolean;
   isMedia: boolean;
+  showTerminalProfiles?: boolean;
+  terminalProfiles?: TerminalProfile[];
+  activeTerminalId?: string | null;
   mediaFullscreen: boolean;
   previewMode: boolean;
   isDirty: boolean;
   onTogglePreview: () => void;
   onSave: () => void;
   onToggleFullscreen: () => void;
+  onSelectTerminal?: (id: string) => void;
 }
 
 export function ContentToolbar({
   hasSelection,
   isMarkdown,
   isMedia,
+  showTerminalProfiles,
+  terminalProfiles,
+  activeTerminalId,
   mediaFullscreen,
   previewMode,
   isDirty,
   onTogglePreview,
   onSave,
   onToggleFullscreen,
+  onSelectTerminal,
 }: ContentToolbarProps) {
   return (
     <div className="content__toolbar">
-      {hasSelection && (
+      {(hasSelection || showTerminalProfiles) && (
         <div className="toolbar-actions">
           {isMarkdown && (
             <ToolbarButton active={previewMode} onClick={onTogglePreview} title={previewMode ? "Edit Mode" : "Preview Mode"}>
               {previewMode ? <EditIcon /> : <PreviewIcon />}
             </ToolbarButton>
           )}
-          <ToolbarButton dirty={isDirty} onClick={onSave} disabled={!isDirty} title="Save (Cmd+S)">
-            <SaveIcon />
-          </ToolbarButton>
-          {isMedia && (
-            <ToolbarButton onClick={onToggleFullscreen} title={mediaFullscreen ? "Exit fullscreen" : "Fullscreen"}>
-              {mediaFullscreen ? "⤢" : "⛶"}
-            </ToolbarButton>
+          {hasSelection && (
+            <>
+              <ToolbarButton dirty={isDirty} onClick={onSave} disabled={!isDirty} title="Save (Cmd+S)">
+                <SaveIcon />
+              </ToolbarButton>
+              {isMedia && (
+                <ToolbarButton onClick={onToggleFullscreen} title={mediaFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+                  {mediaFullscreen ? "⤢" : "⛶"}
+                </ToolbarButton>
+              )}
+            </>
           )}
+          {showTerminalProfiles && terminalProfiles?.length ? (
+            <div className="terminal-toolbar">
+              {terminalProfiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  className={`terminal-toolbar__btn${activeTerminalId === profile.id ? " terminal-toolbar__btn--active" : ""}`}
+                  onClick={() => onSelectTerminal?.(profile.id)}
+                  title={`${profile.name} · ${profile.command}`}
+                >
+                  <span className="terminal-toolbar__name">{profile.name}</span>
+                  <span className="terminal-toolbar__model">{profile.model}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -1,20 +1,26 @@
 package main
 
 import (
-	"context"
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
-	"html"
+	"encoding/json"
 	"encoding/xml"
+	"fmt"
+	"html"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
+	"sync"
 	"tact/internal/backend"
+	"time"
+
+	"github.com/creack/pty"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type GitFileStatus struct {
@@ -357,9 +363,28 @@ type VolumeInfo struct {
 	Name string `json:"name"`
 }
 
+type TerminalSessionInfo struct {
+	ID        string `json:"id"`
+	ProfileID string `json:"profileId"`
+	Name      string `json:"name"`
+	Model     string `json:"model"`
+	Command   string `json:"command"`
+	Running   bool   `json:"running"`
+	StartedAt string `json:"startedAt"`
+}
+
+type terminalSession struct {
+	info TerminalSessionInfo
+	cmd  *exec.Cmd
+	pty  *os.File
+}
+
 type App struct {
-	ctx     context.Context
-	backend *backend.Backend
+	ctx               context.Context
+	backend           *backend.Backend
+	terminalMu        sync.Mutex
+	terminalSessions  map[string]*terminalSession
+	terminalLaunchSeq int
 }
 
 type FileEntry struct {
@@ -369,7 +394,10 @@ type FileEntry struct {
 }
 
 func NewApp() *App {
-	return &App{backend: backend.New()}
+	return &App{
+		backend:          backend.New(),
+		terminalSessions: map[string]*terminalSession{},
+	}
 }
 
 func (a *App) gitRoot() string {
@@ -399,6 +427,279 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) Ping() string {
 	return a.backend.Ping()
+}
+
+func (a *App) TerminalProfiles() []backend.TerminalProfile {
+	return a.backend.TerminalProfiles()
+}
+
+func (a *App) TerminalCount() int {
+	a.terminalMu.Lock()
+	defer a.terminalMu.Unlock()
+	return len(a.terminalSessions)
+}
+
+func (a *App) TerminalSessions() []TerminalSessionInfo {
+	a.terminalMu.Lock()
+	defer a.terminalMu.Unlock()
+
+	result := make([]TerminalSessionInfo, 0, len(a.terminalSessions))
+	for _, session := range a.terminalSessions {
+		result = append(result, session.info)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartedAt == result[j].StartedAt {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].StartedAt > result[j].StartedAt
+	})
+	return result
+}
+
+func (a *App) LaunchTerminalProfile(id string) string {
+	return a.LaunchTerminalProfileAt(id, "")
+}
+
+func (a *App) LaunchTerminalProfileAt(id string, dir string) string {
+	profile, ok := a.terminalProfileByID(id)
+	if !ok {
+		return ""
+	}
+	session := a.spawnTerminalSession(profile, dir)
+	if session == nil {
+		return ""
+	}
+	return session.info.ID
+}
+
+func (a *App) SendTerminalInput(sessionID, input string) bool {
+	a.terminalMu.Lock()
+	session := a.terminalSessions[sessionID]
+	a.terminalMu.Unlock()
+	if session == nil || session.pty == nil {
+		return false
+	}
+	_, err := io.WriteString(session.pty, input)
+	return err == nil
+}
+
+func (a *App) CloseTerminalSession(sessionID string) bool {
+	a.terminalMu.Lock()
+	session := a.terminalSessions[sessionID]
+	a.terminalMu.Unlock()
+	if session == nil || session.cmd == nil || session.cmd.Process == nil {
+		return false
+	}
+	if session.pty != nil {
+		_ = session.pty.Close()
+	}
+	return session.cmd.Process.Kill() == nil
+}
+
+func (a *App) ResizeTerminalSession(sessionID string, cols, rows int) bool {
+	a.terminalMu.Lock()
+	session := a.terminalSessions[sessionID]
+	a.terminalMu.Unlock()
+	if session == nil || session.pty == nil || cols <= 0 || rows <= 0 {
+		return false
+	}
+	return pty.Setsize(session.pty, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}) == nil
+}
+
+func (a *App) terminalProfileByID(id string) (backend.TerminalProfile, bool) {
+	for _, profile := range a.backend.TerminalProfiles() {
+		if profile.ID == id {
+			return profile, true
+		}
+	}
+	return backend.TerminalProfile{}, false
+}
+
+func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) *terminalSession {
+	startDir := dir
+	if startDir == "" {
+		startDir = a.GetCwd()
+	}
+	if info, err := os.Stat(startDir); err != nil || !info.IsDir() {
+		startDir = a.GetCwd()
+	}
+
+	a.terminalMu.Lock()
+	a.terminalLaunchSeq++
+	index := a.terminalLaunchSeq
+	a.terminalMu.Unlock()
+
+	sessionID := fmt.Sprintf("%s-%d", profile.ID, index)
+	sessionName := fmt.Sprintf("%s #%d", profile.Name, index)
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	cmd := exec.Command(shell, "-lc", fmt.Sprintf("cd %s && exec env TERM=xterm-256color %s", shellEscape(startDir), profile.Command))
+	cmd.Dir = startDir
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	if profile.ID == "gemini" {
+		if homeDir, err := prepareGeminiHome(); err == nil {
+			cmd.Env = append(cmd.Env,
+				"HOME="+homeDir,
+				"XDG_CONFIG_HOME="+homeDir,
+			)
+		}
+	}
+
+	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 120, Rows: 40})
+	if err != nil {
+		return nil
+	}
+
+	session := &terminalSession{
+		info: TerminalSessionInfo{
+			ID:        sessionID,
+			ProfileID: profile.ID,
+			Name:      sessionName,
+			Model:     profile.Model,
+			Command:   profile.Command,
+			Running:   true,
+			StartedAt: time.Now().Format(time.RFC3339Nano),
+		},
+		cmd: cmd,
+		pty: ptyFile,
+	}
+
+	a.terminalMu.Lock()
+	a.terminalSessions[sessionID] = session
+	a.terminalMu.Unlock()
+	a.emitTerminalSessions()
+
+	go a.pipeTerminalOutput(sessionID, ptyFile)
+
+	go func() {
+		_ = cmd.Wait()
+		a.terminalMu.Lock()
+		if current := a.terminalSessions[sessionID]; current != nil {
+			current.info.Running = false
+			current.pty = nil
+			current.cmd = cmd
+		}
+		a.terminalMu.Unlock()
+		a.emitTerminalSessions()
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "terminal:exited", sessionID)
+		}
+	}()
+
+	return session
+}
+
+func (a *App) emitTerminalSessions() {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "terminal:sessions")
+}
+
+func (a *App) pipeTerminalOutput(sessionID string, reader io.ReadCloser) {
+	defer reader.Close()
+	buf := make([]byte, 4096)
+	for {
+		n, err := reader.Read(buf)
+		if n > 0 && a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "terminal:output", sessionID, string(buf[:n]))
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func shellEscape(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func prepareGeminiHome() (string, error) {
+	sourceHome := filepath.Join(os.Getenv("HOME"), ".gemini")
+	tempHome, err := os.MkdirTemp("", "tact-gemini-home-*")
+	if err != nil {
+		return "", err
+	}
+	destHome := filepath.Join(tempHome, ".gemini")
+	if err := copyDir(sourceHome, destHome); err != nil {
+		return "", err
+	}
+	settingsPath := filepath.Join(destHome, "settings.json")
+	settings := map[string]any{}
+	if data, err := os.ReadFile(settingsPath); err == nil && len(data) > 0 {
+		_ = json.Unmarshal(data, &settings)
+	}
+	general, _ := settings["general"].(map[string]any)
+	if general == nil {
+		general = map[string]any{}
+		settings["general"] = general
+	}
+	general["enableAutoUpdate"] = false
+	general["enableAutoUpdateNotification"] = false
+	general["enableNotifications"] = false
+	mcp, _ := settings["mcp"].(map[string]any)
+	if mcp == nil {
+		mcp = map[string]any{}
+		settings["mcp"] = mcp
+	}
+	mcp["allowed"] = []string{}
+	encoded, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(settingsPath, encoded, 0644); err != nil {
+		return "", err
+	}
+	return tempHome, nil
+}
+
+func copyDir(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.MkdirAll(dst, 0755)
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", src)
+	}
+	if err := os.MkdirAll(dst, info.Mode().Perm()); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := copyFile(srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, info.Mode().Perm())
 }
 
 func (a *App) GetCwd() string {
@@ -467,7 +768,6 @@ func readPathBytes(path string) ([]byte, bool) {
 	}
 	return data, true
 }
-
 
 func (a *App) ReadTextFile(path string) string {
 	data, ok := readPathBytes(path)
@@ -882,7 +1182,6 @@ func (a *App) ListDir(path string) []FileEntry {
 	})
 	return result
 }
-
 
 func (a *App) DirSize(path string) int64 {
 	if archivePath, innerPath, ok := splitVirtualZipPath(path); ok {

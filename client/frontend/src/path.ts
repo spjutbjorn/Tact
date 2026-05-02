@@ -57,8 +57,12 @@ export function isRtfPath(path: string): boolean {
   return /\.rtf$/i.test(path);
 }
 
+export function isLicensePath(path: string): boolean {
+  return /(^|\/)(license|copying|notice)(\..*)?$/i.test(path);
+}
+
 export function isTextLikePath(path: string): boolean {
-  return /\.(txt|md|markdown|json|yaml|yml|xml|csv|log|toml|ini|conf|rs|go|ts|tsx|js|jsx|css|html|htm|c|h|cpp|hpp|py|sh|zsh|bash|sql|lua|java|kt|swift|rb|php|cs|sln|csproj|mdx|cjs|mjs|cts|mts|flow|bnf|applescript|mod|sum|md5|map|proto|svelte|iml|plist|mdc|manifest|version|work|m)$/i.test(path);
+  return /\.(txt|text|md|markdown|mdx|rst|adoc|asciidoc|org|tex|latex|bib|bibtex|rmd|qmd|json|jsonc|jsonl|ndjson|yaml|yml|xml|csv|tsv|log|toml|ini|conf|cfg|rc|env|properties|prop|lock|diff|patch|sql|graphql|gql|proto|cue|rego|sh|bash|zsh|fish|ps1|psm1|py|pyi|rb|php|pl|pm|go|rs|ts|tsx|js|jsx|cjs|mjs|cts|mts|flow|c|h|cpp|hpp|cc|hh|cxx|hxx|java|kt|kts|swift|cs|fs|fsx|lua|scala|clj|cljs|edn|erl|ex|exs|hs|nim|dart|groovy|gradle|make|mk|cmake|cabal|nix|r|jl|m|mm|matlab|vue|svelte|html|htm|css|scss|sass|less|styl|svg|xhtml|xaml|xsl|xslt|plist|vcxproj|csproj|sln|iml|mdc|manifest|version|work|applescript|bnf|mod|sum|md5|map|vhd|vhdl|wat)$/i.test(path);
 }
 
 export function isZipArchivePath(path: string): boolean {
