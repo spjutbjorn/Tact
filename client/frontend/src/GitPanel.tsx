@@ -91,7 +91,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       refresh();
       return;
     }
-    setStatusMessage(`Kunde inte stage: ${path}`);
+    setStatusMessage(`Could not stage: ${path}`);
   }
 
   async function handleUnstage(path: string) {
@@ -101,7 +101,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       refresh();
       return;
     }
-    setStatusMessage(`Kunde inte unstage: ${path}`);
+    setStatusMessage(`Could not unstage: ${path}`);
   }
 
   async function handleCommit() {
@@ -116,7 +116,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       setIsCommitting(false);
       return;
     }
-    setStatusMessage("Commit misslyckades");
+    setStatusMessage("Commit failed");
     setIsCommitting(false);
   }
 
@@ -127,7 +127,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       refresh();
       return;
     }
-    setStatusMessage(`Kunde inte revert: ${path}`);
+    setStatusMessage(`Could not revert: ${path}`);
   }
 
   async function handlePush() {
@@ -137,7 +137,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       refresh();
       return;
     }
-    setStatusMessage("Push misslyckades");
+    setStatusMessage("Push failed");
   }
 
   return (

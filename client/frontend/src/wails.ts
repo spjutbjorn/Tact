@@ -35,13 +35,16 @@ export interface TerminalSession {
 interface WailsApp {
   GetCwd: () => Promise<string>;
   TerminalProfiles: () => Promise<TerminalProfile[]>;
+  TerminalProfileUsage: (profileID: string) => Promise<string>;
   TerminalCount: () => Promise<number>;
   TerminalSessions: () => Promise<TerminalSession[]>;
   LaunchTerminalProfile: (id: string) => Promise<string>;
   LaunchTerminalProfileAt: (id: string, dir: string) => Promise<string>;
+  LaunchTerminalProfileAtSized: (id: string, dir: string, cols: number, rows: number) => Promise<string>;
   SendTerminalInput: (sessionID: string, input: string) => Promise<boolean>;
   ResizeTerminalSession: (sessionID: string, cols: number, rows: number) => Promise<boolean>;
   CloseTerminalSession: (sessionID: string) => Promise<boolean>;
+  RenameTerminalSession: (sessionID: string, name: string) => Promise<boolean>;
   Navigate: (path: string) => Promise<string>;
   ListDir: (path: string) => Promise<FileEntry[]>;
   DirSize: (path: string) => Promise<number>;
@@ -77,6 +80,9 @@ export const GetCwd = (): Promise<string> =>
 export const TerminalProfiles = (): Promise<TerminalProfile[]> =>
   app()?.TerminalProfiles() ?? Promise.resolve([]);
 
+export const TerminalProfileUsage = (profileID: string): Promise<string> =>
+  app()?.TerminalProfileUsage(profileID) ?? Promise.resolve("");
+
 export const TerminalCount = (): Promise<number> =>
   app()?.TerminalCount() ?? Promise.resolve(0);
 
@@ -89,6 +95,9 @@ export const LaunchTerminalProfile = (id: string): Promise<string> =>
 export const LaunchTerminalProfileAt = (id: string, dir: string): Promise<string> =>
   app()?.LaunchTerminalProfileAt(id, dir) ?? Promise.resolve("");
 
+export const LaunchTerminalProfileAtSized = (id: string, dir: string, cols: number, rows: number): Promise<string> =>
+  app()?.LaunchTerminalProfileAtSized(id, dir, cols, rows) ?? Promise.resolve("");
+
 export const SendTerminalInput = (sessionID: string, input: string): Promise<boolean> =>
   app()?.SendTerminalInput(sessionID, input) ?? Promise.resolve(false);
 
@@ -97,6 +106,9 @@ export const ResizeTerminalSession = (sessionID: string, cols: number, rows: num
 
 export const CloseTerminalSession = (sessionID: string): Promise<boolean> =>
   app()?.CloseTerminalSession(sessionID) ?? Promise.resolve(false);
+
+export const RenameTerminalSession = (sessionID: string, name: string): Promise<boolean> =>
+  app()?.RenameTerminalSession(sessionID, name) ?? Promise.resolve(false);
 
 export const Navigate = (path: string): Promise<string> =>
   app()?.Navigate(path) ?? Promise.resolve(path);

@@ -8,9 +8,20 @@ import IconBar from "./IconBar";
 import TerminalPanel from "./TerminalPanel";
 import TerminalView from "./TerminalView";
 import Settings from "./Settings";
-import { CopyPath, DeleteFile, GetCwd, CloseTerminalSession, LaunchTerminalProfileAt, MovePath, Navigate, SendTerminalInput, TerminalProfiles, TerminalSessions, type TerminalProfile, type TerminalSession } from "./wails";
+import { CopyPath, DeleteFile, GetCwd, CloseTerminalSession, LaunchTerminalProfileAt, MovePath, Navigate, ResizeTerminalSession, SendTerminalInput, TerminalProfileUsage, TerminalProfiles, TerminalSessions, type TerminalProfile, type TerminalSession } from "./wails";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, isMarkdownPath } from "./path";
+import { terminalOutputStore } from "./terminalOutputStore";
+import { terminalRegistry } from "./terminalRegistry";
+
+terminalRegistry.setHandlers(
+  (sessionId, data) => {
+    void SendTerminalInput(sessionId, data);
+  },
+  (sessionId, cols, rows) => {
+    void ResizeTerminalSession(sessionId, cols, rows);
+  },
+);
 
 const PANEL_WIDTH_KEY = "tact.panelWidth";
 const DEFAULT_PANEL_WIDTH = 220;
@@ -27,7 +38,7 @@ function pickActiveSessionId(current: string | null, sessions: TerminalSession[]
   if (current && sessions.some((session) => session.id === current)) {
     return current;
   }
-  return sessions[0]?.id ?? null;
+  return sessions.find((session) => session.running)?.id ?? sessions[0]?.id ?? null;
 }
 
 export default function App() {
@@ -48,7 +59,7 @@ export default function App() {
   const [terminalProfiles, setTerminalProfiles] = useState<TerminalProfile[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [activeTerminalSessionId, setActiveTerminalSessionId] = useState<string | null>(null);
-  const [terminalOutputBySession, setTerminalOutputBySession] = useState<Record<string, string>>({});
+  const [terminalActivityBySessionId, setTerminalActivityBySessionId] = useState<Record<string, number>>({});
   const [fileListRefreshToken, setFileListRefreshToken] = useState(0);
   const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
@@ -62,11 +73,23 @@ export default function App() {
     });
   }, []);
 
+  const handleSelectTerminalSession = (sessionID: string) => {
+    setActivePanel("terminals");
+    setTerminalSidebarOpen(true);
+    setActiveTerminalSessionId(sessionID);
+  };
+
   useEffect(() => {
     TerminalProfiles().then((profiles) => {
       setTerminalProfiles(profiles);
     });
   }, []);
+
+  useEffect(() => {
+    terminalProfiles.forEach((profile) => {
+      void refreshTerminalUsage(profile.id);
+    });
+  }, [terminalProfiles]);
 
   useEffect(() => {
     TerminalSessions().then((sessions) => {
@@ -77,9 +100,10 @@ export default function App() {
 
   useEffect(() => {
     const offOutput = EventsOn("terminal:output", (sessionID: string, chunk: string) => {
-      setTerminalOutputBySession((current) => ({
+      terminalOutputStore.append(sessionID, chunk);
+      setTerminalActivityBySessionId((current) => ({
         ...current,
-        [sessionID]: (current[sessionID] ?? "") + chunk,
+        [sessionID]: Date.now(),
       }));
     });
     const offSessions = EventsOn("terminal:sessions", () => {
@@ -108,6 +132,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth));
   }, [panelWidth]);
+
+  async function refreshTerminalUsage(profileId: string) {
+    await TerminalProfileUsage(profileId);
+  }
 
   function syncDeletedSelection(target: string) {
     setSelectedFile((current) => {
@@ -177,8 +205,11 @@ export default function App() {
           setTerminalSidebarOpen(true);
           return "terminals";
         }
-        setTerminalSidebarOpen((current) => !current);
-        return prev;
+        if (terminalSidebarOpen) {
+          setTerminalSidebarOpen(false);
+          return "terminals";
+        }
+        return "files";
       });
       return;
     }
@@ -229,6 +260,11 @@ export default function App() {
         running: true,
         startedAt: new Date().toISOString(),
       };
+      void refreshTerminalUsage(profile.id);
+      setTerminalActivityBySessionId((current) => ({
+        ...current,
+        [sessionID]: Date.now(),
+      }));
       setTerminalSessions((current) => {
         const next = current.filter((session) => session.id !== sessionID);
         return [optimisticSession, ...next];
@@ -242,15 +278,12 @@ export default function App() {
     setActiveTerminalSessionId(sessionID);
   };
 
-  const handleTerminalInput = async (data: string) => {
-    if (!activeTerminalSessionId) return;
-    await SendTerminalInput(activeTerminalSessionId, data);
-  };
-
   const handleCloseTerminalSession = async (sessionID: string) => {
     const ok = await CloseTerminalSession(sessionID);
     if (ok) {
-      setTerminalOutputBySession((current) => {
+      terminalRegistry.destroy(sessionID);
+      terminalOutputStore.clear(sessionID);
+      setTerminalActivityBySessionId((current) => {
         const next = { ...current };
         delete next[sessionID];
         return next;
@@ -398,7 +431,6 @@ export default function App() {
   const isMedia = selectedFile ? /\.(png|jpe?g|gif|webp|svg|bmp|ico|tif|tiff|avif|mp4|m4v|webm|mov|avi|mkv|ogv)$/i.test(selectedFile) : false;
   const showPanels = !mediaFullscreen;
   const activeTerminalSession = terminalSessions.find((session) => session.id === activeTerminalSessionId) ?? terminalSessions[0] ?? null;
-  const activeTerminalOutput = activeTerminalSession ? terminalOutputBySession[activeTerminalSession.id] ?? "" : "";
   const titleLabel = showTerminals ? activeTerminalSession?.name ?? "Terminals" : selectedFile ? basename(selectedFile) : "Tact";
 
   return (
@@ -455,12 +487,10 @@ export default function App() {
           {showSettings ? (
             <Settings panelWidth={panelWidth} onPanelWidthChange={setPanelWidth} />
           ) : showTerminals ? (
-          <TerminalView
+            <TerminalView
               session={activeTerminalSession}
-              output={activeTerminalOutput}
-              onInput={(data) => {
-                void handleTerminalInput(data);
-              }}
+              activityBySessionId={terminalActivityBySessionId}
+              sidebarOpen={terminalSidebarOpen}
             />
           ) : selectedFile ? (
             <FileViewer 
@@ -483,20 +513,20 @@ export default function App() {
             profiles={terminalProfiles}
             sessions={terminalSessions}
             activeSessionId={activeTerminalSessionId}
+            activityBySessionId={terminalActivityBySessionId}
             launchDir={activePath || path || ""}
             onLaunchProfile={(id, dir) => {
               void handleLaunchTerminal(id, dir);
             }}
-            onSelectSession={(id) => {
-              setActivePanel("terminals");
-              setTerminalSidebarOpen(true);
-              setActiveTerminalSessionId(id);
-            }}
+            onSelectSession={handleSelectTerminalSession}
             onCloseSession={(id) => {
               void handleCloseTerminalSession(id);
             }}
+            onProfileBecameIdle={(profileId) => {
+              void refreshTerminalUsage(profileId);
+            }}
           />
-        )}
+          )}
         {showFiles && showPanels && (
           <FilePanel
             side="right"

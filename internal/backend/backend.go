@@ -25,7 +25,7 @@ func (b *Backend) TerminalProfiles() []TerminalProfile {
 			ID:          "codex",
 			Name:        "Codex",
 			Model:       "GPT-5.1-Codex",
-			Command:     "codex",
+			Command:     "codex /status",
 			Description: "OpenAI coding agent CLI.",
 		},
 		{

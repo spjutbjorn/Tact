@@ -1,119 +1,84 @@
-import { useEffect, useMemo, useRef } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "xterm/css/xterm.css";
-import { ResizeTerminalSession } from "./wails";
-import type { TerminalSession } from "./wails";
+import { ResizeTerminalSession, type TerminalSession } from "./wails";
+import { terminalRegistry } from "./terminalRegistry";
+
+const WORKING_WINDOW_MS = 4000;
 
 interface Props {
   session: TerminalSession | null;
-  output: string;
-  onInput: (data: string) => void;
+  activityBySessionId: Record<string, number>;
+  sidebarOpen: boolean;
 }
 
-export default function TerminalView({ session, output, onInput }: Props) {
-  const terminalMountRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const seenOutputRef = useRef("");
-  const onInputRef = useRef(onInput);
+function getSessionStatus(session: TerminalSession, activityBySessionId: Record<string, number>, now: number) {
+  if (!session.running) return "done";
+  const lastActivity = activityBySessionId[session.id] ?? 0;
+  return now - lastActivity <= WORKING_WINDOW_MS ? "working" : "idle";
+}
+
+export default function TerminalView({ session, activityBySessionId, sidebarOpen }: Props) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const header = useMemo(() => {
     if (!session) return "No session selected";
-    return `${session.name} · ${session.model} · ${session.command}`;
+    return `${session.name} · ${session.model}`;
   }, [session]);
 
-  useEffect(() => {
-    onInputRef.current = onInput;
-  }, [onInput]);
+  const hint = useMemo(() => {
+    if (!session) return "Use the terminal below. Input is handled directly in the terminal.";
+    const status = getSessionStatus(session, activityBySessionId, now);
+    return `${status} · ${session.command}`;
+  }, [session, activityBySessionId, now]);
 
   useEffect(() => {
-    const mount = terminalMountRef.current;
-    if (!mount) return;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontFamily: 'ui-monospace, "SF Mono", monospace',
-      fontSize: 13,
-      theme: {
-        background: "#090909",
-        foreground: "#d0d0d0",
-        cursor: "#d0d0d0",
-        selectionBackground: "rgba(59, 130, 246, 0.25)",
-      },
-      convertEol: true,
-      scrollback: 6000,
-      allowProposedApi: true,
-    });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    terminal.open(mount);
-    fitAddon.fit();
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !session) return;
 
-    terminal.onData((data) => {
-      if (!session) return;
-      onInputRef.current(data);
-    });
-    terminal.onResize(({ cols, rows }) => {
-      if (!session) return;
-      void ResizeTerminalSession(session.id, cols, rows);
-    });
-
-    terminalRef.current = terminal;
-    fitRef.current = fitAddon;
+    const entry = terminalRegistry.getOrCreate(session.id);
+    host.appendChild(entry.container);
+    entry.fitAddon.fit();
+    // Backend defers PTY spawn until first ResizeTerminalSession; xterm's
+    // onResize fires only when dims actually change, so push the current dims
+    // explicitly to guarantee the spawn kicks off.
+    void ResizeTerminalSession(session.id, entry.terminal.cols, entry.terminal.rows);
+    entry.terminal.focus();
 
     const observer = new ResizeObserver(() => {
-      fitAddon.fit();
+      entry.fitAddon.fit();
     });
-    observer.observe(mount);
+    observer.observe(host);
 
     return () => {
       observer.disconnect();
-      terminal.dispose();
-      terminalRef.current = null;
-      fitRef.current = null;
-      seenOutputRef.current = "";
-    };
-  }, [session]);
-
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-
-    if (!session) {
-      terminal.reset();
-      seenOutputRef.current = "";
-      return;
-    }
-
-    if (output === seenOutputRef.current) {
-      return;
-    }
-
-    if (output.startsWith(seenOutputRef.current)) {
-      const nextChunk = output.slice(seenOutputRef.current.length);
-      if (nextChunk) {
-        terminal.write(nextChunk);
+      if (entry.container.parentElement === host) {
+        host.removeChild(entry.container);
       }
-    } else {
-      terminal.reset();
-      terminal.write(output);
-    }
-    seenOutputRef.current = output;
-  }, [output, session]);
+    };
+  }, [session?.id]);
 
   useEffect(() => {
-    fitRef.current?.fit();
-  }, [session?.id]);
+    if (!session) return;
+    const entry = terminalRegistry.getOrCreate(session.id);
+    entry.fitAddon.fit();
+  }, [sidebarOpen, session?.id]);
 
   return (
     <section className="terminal-view">
       <div className="terminal-view__header">
         <div className="terminal-view__title">{header}</div>
-        <div className="terminal-view__hint">Use the terminal below. Input is handled directly in the terminal.</div>
+        <div className="terminal-view__hint">{hint}</div>
       </div>
       <div className="terminal-view__terminal-surface">
-        <div className="terminal-view__terminal" ref={terminalMountRef} />
+        <div className="terminal-view__terminal" ref={hostRef} />
       </div>
     </section>
   );

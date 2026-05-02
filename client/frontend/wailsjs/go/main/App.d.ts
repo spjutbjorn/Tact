@@ -33,6 +33,8 @@ export function LaunchTerminalProfile(arg1:string):Promise<string>;
 
 export function LaunchTerminalProfileAt(arg1:string,arg2:string):Promise<string>;
 
+export function LaunchTerminalProfileAtSized(arg1:string,arg2:string,arg3:number,arg4:number):Promise<string>;
+
 export function ListDir(arg1:string):Promise<Array<main.FileEntry>>;
 
 export function ListVolumes():Promise<Array<main.VolumeInfo>>;
@@ -55,11 +57,15 @@ export function ReadTextFile(arg1:string):Promise<string>;
 
 export function Rename(arg1:string,arg2:string):Promise<boolean>;
 
+export function RenameTerminalSession(arg1:string,arg2:string):Promise<boolean>;
+
 export function ResizeTerminalSession(arg1:string,arg2:number,arg3:number):Promise<boolean>;
 
 export function SendTerminalInput(arg1:string,arg2:string):Promise<boolean>;
 
 export function TerminalCount():Promise<number>;
+
+export function TerminalProfileUsage(arg1:string):Promise<string>;
 
 export function TerminalProfiles():Promise<Array<backend.TerminalProfile>>;
 

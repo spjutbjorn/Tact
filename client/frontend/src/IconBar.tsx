@@ -70,9 +70,38 @@ interface Props {
   onToggleDualFiles: () => void;
 }
 
+function Logo() {
+  return (
+    <svg className="icon-bar__logo" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#1E293B" />
+          <stop offset="100%" stop-color="#0F172A" />
+        </linearGradient>
+        <linearGradient id="textGrad" x1="220" y1="180" x2="420" y2="280" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#60A5FA" />
+          <stop offset="100%" stop-color="#3B82F6" />
+        </linearGradient>
+      </defs>
+      <rect x="32" y="64" width="448" height="384" rx="32" fill="url(#bgGrad)" />
+      <rect x="32" y="64" width="448" height="384" rx="32" stroke="#334155" strokeWidth="2" />
+      <path d="M32 96C32 78.3269 46.3269 64 64 64H448C465.673 64 480 78.3269 480 96V128H32V96Z" fill="#020617" opacity="0.5" />
+      <circle cx="72" cy="96" r="8" fill="#EF4444" />
+      <circle cx="104" cy="96" r="8" fill="#F59E0B" />
+      <circle cx="136" cy="96" r="8" fill="#10B981" />
+      <path d="M80 220L128 256L80 292" stroke="#10B981" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="152" y="284" width="32" height="12" rx="4" fill="#10B981" />
+      <text x="210" y="280" fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" fontSize="96" fontWeight="900" fill="url(#textGrad)" letterSpacing="-2">Tact</text>
+    </svg>
+  );
+}
+
 export default function IconBar({ activePanel, onToggle, dualFiles, onToggleDualFiles }: Props) {
   return (
     <div className="icon-bar">
+      <div className="icon-bar__logo-container">
+        <Logo />
+      </div>
       {ICONS.map((icon) => (
         icon.id === "transfer" ? (
           <button

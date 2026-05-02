@@ -13,11 +13,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"tact/internal/backend"
 	"time"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -374,9 +376,11 @@ type TerminalSessionInfo struct {
 }
 
 type terminalSession struct {
-	info TerminalSessionInfo
-	cmd  *exec.Cmd
-	pty  *os.File
+	info     TerminalSessionInfo
+	cmd      *exec.Cmd
+	pty      *os.File
+	profile  backend.TerminalProfile
+	startDir string
 }
 
 type App struct {
@@ -433,6 +437,56 @@ func (a *App) TerminalProfiles() []backend.TerminalProfile {
 	return a.backend.TerminalProfiles()
 }
 
+func (a *App) TerminalProfileUsage(profileID string) string {
+	probe, ok := terminalUsageProbeForProfile(profileID)
+	if !ok {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, probe.command, probe.args...)
+	if cwd := a.GetCwd(); cwd != "" {
+		cmd.Dir = cwd
+	}
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return ""
+	}
+
+	var output bytes.Buffer
+	readDone := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&output, ptmx)
+		close(readDone)
+	}()
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- cmd.Wait()
+	}()
+
+	if probe.input != "" {
+		_, _ = io.WriteString(ptmx, probe.input)
+	}
+
+	time.Sleep(700 * time.Millisecond)
+	_ = ptmx.Close()
+
+	select {
+	case <-readDone:
+	case <-time.After(2 * time.Second):
+	}
+
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+	}
+
+	return summarizeUsageOutput(stripANSI(output.String()))
+}
+
 func (a *App) TerminalCount() int {
 	a.terminalMu.Lock()
 	defer a.terminalMu.Unlock()
@@ -472,6 +526,12 @@ func (a *App) LaunchTerminalProfileAt(id string, dir string) string {
 	return session.info.ID
 }
 
+// Kept for binding compatibility; the size parameters are ignored — the actual
+// PTY is sized by the first ResizeTerminalSession call from the frontend.
+func (a *App) LaunchTerminalProfileAtSized(id string, dir string, _ int, _ int) string {
+	return a.LaunchTerminalProfileAt(id, dir)
+}
+
 func (a *App) SendTerminalInput(sessionID, input string) bool {
 	a.terminalMu.Lock()
 	session := a.terminalSessions[sessionID]
@@ -487,20 +547,54 @@ func (a *App) CloseTerminalSession(sessionID string) bool {
 	a.terminalMu.Lock()
 	session := a.terminalSessions[sessionID]
 	a.terminalMu.Unlock()
-	if session == nil || session.cmd == nil || session.cmd.Process == nil {
+	if session == nil {
 		return false
 	}
 	if session.pty != nil {
 		_ = session.pty.Close()
 	}
-	return session.cmd.Process.Kill() == nil
+	if session.cmd != nil && session.cmd.Process != nil {
+		_ = session.cmd.Process.Kill()
+	}
+	a.terminalMu.Lock()
+	delete(a.terminalSessions, sessionID)
+	a.terminalMu.Unlock()
+	a.emitTerminalSessions()
+	return true
+}
+
+func (a *App) RenameTerminalSession(sessionID, name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+
+	a.terminalMu.Lock()
+	session := a.terminalSessions[sessionID]
+	if session == nil {
+		a.terminalMu.Unlock()
+		return false
+	}
+	session.info.Name = name
+	a.terminalMu.Unlock()
+	a.emitTerminalSessions()
+	return true
 }
 
 func (a *App) ResizeTerminalSession(sessionID string, cols, rows int) bool {
+	if cols <= 0 || rows <= 0 {
+		return false
+	}
 	a.terminalMu.Lock()
 	session := a.terminalSessions[sessionID]
 	a.terminalMu.Unlock()
-	if session == nil || session.pty == nil || cols <= 0 || rows <= 0 {
+	if session == nil {
+		return false
+	}
+	if session.pty == nil && session.cmd == nil {
+		return a.startTerminalProcess(session, cols, rows)
+	}
+	if session.pty == nil {
 		return false
 	}
 	return pty.Setsize(session.pty, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}) == nil
@@ -532,27 +626,6 @@ func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) 
 	sessionID := fmt.Sprintf("%s-%d", profile.ID, index)
 	sessionName := fmt.Sprintf("%s #%d", profile.Name, index)
 
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/zsh"
-	}
-	cmd := exec.Command(shell, "-lc", fmt.Sprintf("cd %s && exec env TERM=xterm-256color %s", shellEscape(startDir), profile.Command))
-	cmd.Dir = startDir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	if profile.ID == "gemini" {
-		if homeDir, err := prepareGeminiHome(); err == nil {
-			cmd.Env = append(cmd.Env,
-				"HOME="+homeDir,
-				"XDG_CONFIG_HOME="+homeDir,
-			)
-		}
-	}
-
-	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 120, Rows: 40})
-	if err != nil {
-		return nil
-	}
-
 	session := &terminalSession{
 		info: TerminalSessionInfo{
 			ID:        sessionID,
@@ -563,8 +636,8 @@ func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) 
 			Running:   true,
 			StartedAt: time.Now().Format(time.RFC3339Nano),
 		},
-		cmd: cmd,
-		pty: ptyFile,
+		profile:  profile,
+		startDir: startDir,
 	}
 
 	a.terminalMu.Lock()
@@ -572,6 +645,45 @@ func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) 
 	a.terminalMu.Unlock()
 	a.emitTerminalSessions()
 
+	return session
+}
+
+// Starts the actual PTY + child process. Called lazily by the first
+// ResizeTerminalSession so that the process inherits the real terminal
+// dimensions reported by the frontend's xterm fit, avoiding a visible
+// reflow on initial render.
+func (a *App) startTerminalProcess(session *terminalSession, cols, rows int) bool {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	// -i so the shell sources .zshrc/.bashrc and shell aliases (e.g. copilot → gh copilot -i chat) expand.
+	// No `exec` wrapper: per zsh docs, `exec` requires a real binary and bypasses alias/function lookup,
+	// so wrapping with `exec <cmd>` would fail for aliased commands. The extra shell process is fine —
+	// closing the PTY sends SIGHUP through the foreground process group on session close.
+	cmd := exec.Command(shell, "-ilc", fmt.Sprintf("cd %s && %s", shellEscape(session.startDir), session.profile.Command))
+	cmd.Dir = session.startDir
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	if session.profile.ID == "gemini" {
+		if homeDir, err := prepareGeminiHome(); err == nil {
+			cmd.Env = append(cmd.Env,
+				"HOME="+homeDir,
+				"XDG_CONFIG_HOME="+homeDir,
+			)
+		}
+	}
+
+	ptyFile, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	if err != nil {
+		return false
+	}
+
+	a.terminalMu.Lock()
+	session.cmd = cmd
+	session.pty = ptyFile
+	a.terminalMu.Unlock()
+
+	sessionID := session.info.ID
 	go a.pipeTerminalOutput(sessionID, ptyFile)
 
 	go func() {
@@ -580,7 +692,6 @@ func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) 
 		if current := a.terminalSessions[sessionID]; current != nil {
 			current.info.Running = false
 			current.pty = nil
-			current.cmd = cmd
 		}
 		a.terminalMu.Unlock()
 		a.emitTerminalSessions()
@@ -589,7 +700,7 @@ func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) 
 		}
 	}()
 
-	return session
+	return true
 }
 
 func (a *App) emitTerminalSessions() {
@@ -599,18 +710,118 @@ func (a *App) emitTerminalSessions() {
 	runtime.EventsEmit(a.ctx, "terminal:sessions")
 }
 
+type terminalUsageProbe struct {
+	command string
+	args    []string
+	input   string
+}
+
+func terminalUsageProbeForProfile(profileID string) (terminalUsageProbe, bool) {
+	switch profileID {
+	case "codex":
+		return terminalUsageProbe{command: "codex", input: "/status\n"}, true
+	case "copilot":
+		return terminalUsageProbe{command: "copilot", input: "/usage\n"}, true
+	case "claude":
+		return terminalUsageProbe{command: "claude", input: "/usage\n"}, true
+	case "gemini":
+		return terminalUsageProbe{command: "gemini", input: "/stats model\n"}, true
+	case "junie":
+		return terminalUsageProbe{command: "junie", input: "/usage\n"}, true
+	default:
+		return terminalUsageProbe{}, false
+	}
+}
+
+func stripANSI(value string) string {
+	ansi := regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+	return ansi.ReplaceAllString(value, "")
+}
+
+func summarizeUsageOutput(output string) string {
+	lines := strings.Split(output, "\n")
+	candidates := make([]string, 0, 4)
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		lower := strings.ToLower(line)
+		if lower == "usage" || lower == "användning" {
+			continue
+		}
+		if strings.Contains(lower, "limit") || strings.Contains(lower, "quota") || strings.Contains(lower, "token") || strings.Contains(lower, "usage") || strings.Contains(lower, "context") || strings.Contains(lower, "resets") || strings.Contains(lower, "remaining") || strings.Contains(lower, "cost") {
+			normalized := normalizeUsageLine(line)
+			if normalized != "" {
+				candidates = append(candidates, normalized)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	if len(candidates) > 2 {
+		candidates = candidates[:2]
+	}
+	return strings.Join(candidates, "\n")
+}
+
+func normalizeUsageLine(line string) string {
+	replacements := []struct {
+		pattern *regexp.Regexp
+		replace string
+	}{
+		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*left\b`), "$1% kvar"},
+		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*used\b`), "$1% använt"},
+		{regexp.MustCompile(`(?i)\bresets\b`), "återställs"},
+		{regexp.MustCompile(`(?i)\bremaining\b`), "kvar"},
+		{regexp.MustCompile(`(?i)^\s*(usage|användning)\s*:?\s*`), ""},
+	}
+	out := line
+	for _, repl := range replacements {
+		out = repl.pattern.ReplaceAllString(out, repl.replace)
+	}
+	return strings.TrimSpace(out)
+}
+
 func (a *App) pipeTerminalOutput(sessionID string, reader io.ReadCloser) {
 	defer reader.Close()
 	buf := make([]byte, 4096)
+	var leftover []byte
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 && a.ctx != nil {
-			runtime.EventsEmit(a.ctx, "terminal:output", sessionID, string(buf[:n]))
+			data := append(leftover, buf[:n]...)
+			valid, rest := splitValidUTF8(data)
+			if len(valid) > 0 {
+				runtime.EventsEmit(a.ctx, "terminal:output", sessionID, string(valid))
+			}
+			leftover = rest
 		}
 		if err != nil {
+			if len(leftover) > 0 && a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "terminal:output", sessionID, string(leftover))
+			}
 			return
 		}
 	}
+}
+
+func splitValidUTF8(b []byte) (valid, rest []byte) {
+	if utf8.Valid(b) {
+		return b, nil
+	}
+	// Work backwards from the end to find the last byte that starts a rune.
+	for i := len(b) - 1; i >= 0 && i >= len(b)-4; i-- {
+		if utf8.RuneStart(b[i]) {
+			// Check if the rune starting at i is complete.
+			if utf8.FullRune(b[i:]) {
+				return b, nil
+			}
+			return b[:i], b[i:]
+		}
+	}
+	return b, nil
 }
 
 func shellEscape(value string) string {

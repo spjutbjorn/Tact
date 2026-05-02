@@ -685,7 +685,7 @@ export default function FilePanel({
             <div className="file-panel__entry file-panel__entry--dir">
               <div className="file-panel__entry-left">
                 <FolderIcon />
-                <span>Choose unit</span>
+                <span>Choose volume</span>
               </div>
               <VolumePicker
                 path={path}

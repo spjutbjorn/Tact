@@ -62,6 +62,10 @@ export function LaunchTerminalProfileAt(arg1, arg2) {
   return window['go']['main']['App']['LaunchTerminalProfileAt'](arg1, arg2);
 }
 
+export function LaunchTerminalProfileAtSized(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['LaunchTerminalProfileAtSized'](arg1, arg2, arg3, arg4);
+}
+
 export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
@@ -106,6 +110,10 @@ export function Rename(arg1, arg2) {
   return window['go']['main']['App']['Rename'](arg1, arg2);
 }
 
+export function RenameTerminalSession(arg1, arg2) {
+  return window['go']['main']['App']['RenameTerminalSession'](arg1, arg2);
+}
+
 export function ResizeTerminalSession(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminalSession'](arg1, arg2, arg3);
 }
@@ -116,6 +124,10 @@ export function SendTerminalInput(arg1, arg2) {
 
 export function TerminalCount() {
   return window['go']['main']['App']['TerminalCount']();
+}
+
+export function TerminalProfileUsage(arg1) {
+  return window['go']['main']['App']['TerminalProfileUsage'](arg1);
 }
 
 export function TerminalProfiles() {
