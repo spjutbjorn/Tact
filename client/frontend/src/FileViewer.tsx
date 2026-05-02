@@ -468,7 +468,7 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
       save();
       return;
     }
-    if (e.key === "Enter" || e.key.toLowerCase() === "q") {
+    if (e.key === "Escape") {
       e.preventDefault();
       onExitToFolderView();
     }

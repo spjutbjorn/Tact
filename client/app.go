@@ -117,6 +117,70 @@ func (a *App) GitPush() bool {
 	return a.gitCommand("push").Run() == nil
 }
 
+func (a *App) GitLog() string {
+	cmd := a.gitCommand(
+		"log",
+		"--graph",
+		"--decorate=short",
+		"--all",
+		"-n",
+		"100",
+		"--color=never",
+		"--date=short",
+		"--pretty=format:%C(auto)%h %d%n    %s%n    %ad %an%n",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+func (a *App) GitBranchName() string {
+	cmd := a.gitCommand("branch", "--show-current")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func (a *App) GitBranches() []string {
+	cmd := a.gitCommand("branch", "--format=%(refname:short)")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	branches := make([]string, 0, len(lines))
+	for _, line := range lines {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		branches = append(branches, name)
+	}
+	sort.Strings(branches)
+	return branches
+}
+
+func (a *App) GitCreateBranch(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	return a.gitCommand("checkout", "-b", name).Run() == nil
+}
+
+func (a *App) GitCheckoutBranch(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	return a.gitCommand("checkout", name).Run() == nil
+}
+
 func (a *App) GitRevert(path string) bool {
 	restore := a.gitCommand("restore", "--source=HEAD", "--staged", "--worktree", "--", path)
 	restoreErr := restore.Run()
@@ -125,6 +189,19 @@ func (a *App) GitRevert(path string) bool {
 	cleanErr := clean.Run()
 
 	return restoreErr == nil || cleanErr == nil
+}
+
+func (a *App) GitDiff(path string) string {
+	cmd := a.gitCommand("diff", "HEAD", "--", path)
+	out, err := cmd.Output()
+	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
+		cmd = a.gitCommand("diff", "--", path)
+		out, err = cmd.Output()
+		if err != nil {
+			return ""
+		}
+	}
+	return string(out)
 }
 
 func (a *App) DeleteFile(path string) bool {
@@ -519,6 +596,9 @@ func (a *App) LaunchTerminalProfileAt(id string, dir string) string {
 	if !ok {
 		return ""
 	}
+	if !a.ensureTerminalProfileInstalled(profile) {
+		return ""
+	}
 	session := a.spawnTerminalSession(profile, dir)
 	if session == nil {
 		return ""
@@ -607,6 +687,56 @@ func (a *App) terminalProfileByID(id string) (backend.TerminalProfile, bool) {
 		}
 	}
 	return backend.TerminalProfile{}, false
+}
+
+func profileExecutable(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
+func shellForCommand() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		return "/bin/zsh"
+	}
+	return shell
+}
+
+func (a *App) commandAvailable(command string) bool {
+	if command == "" {
+		return false
+	}
+	shell := shellForCommand()
+	check := exec.Command(shell, "-ilc", fmt.Sprintf("command -v %s >/dev/null 2>&1", shellEscape(command)))
+	check.Env = os.Environ()
+	return check.Run() == nil
+}
+
+func (a *App) runShellCommand(command string) bool {
+	if strings.TrimSpace(command) == "" {
+		return false
+	}
+	shell := shellForCommand()
+	cmd := exec.Command(shell, "-ilc", command)
+	cmd.Env = os.Environ()
+	return cmd.Run() == nil
+}
+
+func (a *App) ensureTerminalProfileInstalled(profile backend.TerminalProfile) bool {
+	executable := profileExecutable(profile.Command)
+	if executable == "" || a.commandAvailable(executable) {
+		return true
+	}
+	if strings.TrimSpace(profile.InstallCommand) == "" {
+		return false
+	}
+	if !a.runShellCommand(profile.InstallCommand) {
+		return false
+	}
+	return a.commandAvailable(executable)
 }
 
 func (a *App) spawnTerminalSession(profile backend.TerminalProfile, dir string) *terminalSession {

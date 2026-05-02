@@ -1,15 +1,7 @@
-import { type MouseEvent as ReactMouseEvent, useEffect, useState } from "react";
-import { GitAdd, GitCommit, GitFileStatus, GitLastCommitMessage, GitPush, GitRevert, GitStatus, GitUnstage } from "./wails";
+import { useEffect, useState } from "react";
+import { GitAdd, GitBranchName, GitBranches, GitCheckoutBranch, GitCommit, GitCreateBranch, GitDiff, GitFileStatus, GitLastCommitMessage, GitLog, GitPush, GitRevert, GitStatus, GitUnstage } from "./wails";
 import { buildGitTree, splitGitStatuses } from "./git-panel-utils";
 import { GitTreeItem } from "./GitTreeItem";
-
-interface Props {
-  width: number;
-  onWidthChange: (w: number) => void;
-}
-
-const MIN_WIDTH = 120;
-const MAX_WIDTH = 600;
 
 function RefreshIcon() {
   return (
@@ -29,46 +21,59 @@ function PushIcon() {
   );
 }
 
-function startColumnResize(
-  width: number,
-  onWidthChange: (value: number) => void,
-  event: ReactMouseEvent
-) {
-  event.preventDefault();
-  const startX = event.clientX;
-  const startWidth = width;
-  document.body.style.userSelect = "none";
-  document.body.style.cursor = "col-resize";
-
-  function onMove(moveEvent: MouseEvent) {
-    const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth - (moveEvent.clientX - startX)));
-    onWidthChange(next);
+function DiffView({ text, file }: { text: string; file: string | null }) {
+  if (!file) {
+    return <div className="git-panel__diff-empty">Select a file to view diff</div>;
+  }
+  if (!text.trim()) {
+    return <div className="git-panel__diff-empty">No changes</div>;
   }
 
-  function onUp() {
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
-  }
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
+  const lines = text.split("\n");
+  return (
+    <div className="git-panel__diff">
+      {lines.map((line, i) => {
+        let cls = "git-panel__diff-line";
+        if (line.startsWith("+") && !line.startsWith("+++")) cls += " git-panel__diff-line--add";
+        else if (line.startsWith("-") && !line.startsWith("---")) cls += " git-panel__diff-line--del";
+        else if (line.startsWith("@@")) cls += " git-panel__diff-line--hunk";
+        else if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("---") || line.startsWith("+++")) cls += " git-panel__diff-line--header";
+        return <div key={i} className={cls}>{line || " "}</div>;
+      })}
+    </div>
+  );
 }
 
-export default function GitPanel({ width, onWidthChange }: Props) {
+export default function GitPanel() {
   const [statuses, setStatuses] = useState<GitFileStatus[]>([]);
   const [commitMessage, setCommitMessage] = useState("");
   const [isCommitting, setIsCommitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAmend, setIsAmend] = useState(false);
+  const [gitLog, setGitLog] = useState("");
+  const [branchName, setBranchName] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [selectedBranchName, setSelectedBranchName] = useState("");
+  const [isBranching, setIsBranching] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [diffText, setDiffText] = useState("");
 
-  const refresh = () => {
-    GitStatus().then((res) => setStatuses(res || []));
+  const refresh = async () => {
+    const [statusRes, logRes, branchRes, branchesRes] = await Promise.all([
+      GitStatus(),
+      GitLog(),
+      GitBranchName(),
+      GitBranches(),
+    ]);
+    setStatuses(statusRes || []);
+    setGitLog(logRes || "");
+    setBranchName(branchRes || "");
+    setBranches(branchesRes || []);
   };
 
   useEffect(() => {
-    refresh();
+    void refresh();
     const timer = setInterval(refresh, 5000);
     return () => clearInterval(timer);
   }, []);
@@ -79,6 +84,51 @@ export default function GitPanel({ width, onWidthChange }: Props) {
       setCommitMessage(message);
     });
   }, [isAmend]);
+
+  useEffect(() => {
+    setSelectedBranchName((current) => {
+      if (current && branches.includes(current)) {
+        return current;
+      }
+      return branchName || branches[0] || "";
+    });
+  }, [branchName, branches]);
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setDiffText("");
+      return;
+    }
+    GitDiff(selectedFile).then(setDiffText);
+  }, [selectedFile, statuses]);
+
+  async function handleCreateBranch() {
+    const nextBranch = newBranchName.trim();
+    if (!nextBranch || isBranching) return;
+    setIsBranching(true);
+    const ok = await GitCreateBranch(nextBranch);
+    if (ok) {
+      setNewBranchName("");
+      setStatusMessage(null);
+      await refresh();
+      setIsBranching(false);
+      return;
+    }
+    setStatusMessage(`Could not create branch: ${nextBranch}`);
+    setIsBranching(false);
+  }
+
+  async function handleSwitchBranch() {
+    const nextBranch = selectedBranchName.trim();
+    if (!nextBranch || nextBranch === branchName) return;
+    const ok = await GitCheckoutBranch(nextBranch);
+    if (ok) {
+      setStatusMessage(null);
+      await refresh();
+      return;
+    }
+    setStatusMessage(`Could not switch to branch: ${nextBranch}`);
+  }
 
   const { stagedFiles, unstagedFiles } = splitGitStatuses(statuses);
   const stagedTree = buildGitTree(stagedFiles);
@@ -141,8 +191,7 @@ export default function GitPanel({ width, onWidthChange }: Props) {
   }
 
   return (
-    <aside className="git-panel" style={{ width }}>
-      <div className="file-panel__resize-handle" onMouseDown={(event) => startColumnResize(width, onWidthChange, event)} />
+    <aside className="git-panel">
       <div className="file-panel__header">
         <span>Git</span>
         <div className="file-panel__header-actions">
@@ -155,58 +204,148 @@ export default function GitPanel({ width, onWidthChange }: Props) {
         </div>
       </div>
 
-      <div className="git-panel__content">
-        <section className="git-panel__section">
-          <div className="git-panel__section-title">Staged ({stagedFiles.length})</div>
-          <ul className="file-panel__list">
-            {stagedTree.length === 0 ? (
-              <li className="git-panel__empty">Nothing staged</li>
+      <div className="git-panel__content git-panel__content--three-col">
+        {/* LEFT: Branches + Log stacked */}
+        <div className="git-panel__column git-panel__column--left">
+          <section className="git-panel__column--branches">
+            <div className="git-panel__section-title">Branches</div>
+            <div className="git-panel__branch-card">
+              <div className="git-panel__branch-meta">
+                <span className="git-panel__branch-label">Current</span>
+                <span className="git-panel__branch-badge">{branchName || "detached HEAD"}</span>
+              </div>
+              <div className="git-panel__branch-list">
+                {branches.length === 0 ? (
+                  <div className="git-panel__empty git-panel__empty--compact">No branches</div>
+                ) : (
+                  branches.map((branch) => (
+                    <button
+                      key={branch}
+                      type="button"
+                      className={`git-panel__branch-item${branch === selectedBranchName ? " git-panel__branch-item--selected" : ""}`}
+                      onClick={() => setSelectedBranchName(branch)}
+                      title={`Switch to ${branch}`}
+                    >
+                      <span className="git-panel__branch-item-name">{branch}</span>
+                      {branch === branchName ? <span className="git-panel__branch-item-current">HEAD</span> : null}
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="git-panel__branch-form">
+                <input
+                  className="git-panel__branch-input"
+                  type="text"
+                  value={newBranchName}
+                  onChange={(event) => setNewBranchName(event.target.value)}
+                  placeholder="Create branch..."
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleCreateBranch();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="git-panel__branch-btn"
+                  onClick={() => {
+                    void handleCreateBranch();
+                  }}
+                  disabled={isBranching || !newBranchName.trim()}
+                >
+                  {isBranching ? "Creating..." : "Create"}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="git-panel__branch-switch-btn"
+                onClick={() => {
+                  void handleSwitchBranch();
+                }}
+                disabled={!selectedBranchName.trim() || selectedBranchName === branchName}
+              >
+                Switch branch
+              </button>
+            </div>
+          </section>
+
+          <section className="git-panel__column--log">
+            <div className="git-panel__section-title">Commit log</div>
+            {gitLog.trim() ? (
+              <pre className="git-panel__log">{gitLog.trimEnd()}</pre>
             ) : (
-              stagedTree.map((node) => (
-                <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} onAction={handleUnstage} onRevert={handleRevert} />
-              ))
+              <div className="git-panel__empty">No commit log</div>
             )}
-          </ul>
-        </section>
-
-        <section className="git-panel__section">
-          <div className="git-panel__section-title">Unstaged ({unstagedFiles.length})</div>
-          <ul className="file-panel__list">
-            {unstagedTree.length === 0 ? (
-              <li className="git-panel__empty">No changes</li>
-            ) : (
-              unstagedTree.map((node) => (
-                <GitTreeItem key={`unstaged-${node.path}`} node={node} depth={0} onAction={handleStage} onRevert={handleRevert} />
-              ))
-            )}
-          </ul>
-        </section>
-
-        {statusMessage && <div className="git-panel__status">{statusMessage}</div>}
-
-        <div className="git-panel__commit-box">
-          <textarea
-            placeholder="Commit message..."
-            value={commitMessage}
-            onChange={(event) => setCommitMessage(event.target.value)}
-            className="git-panel__input"
-          />
-          <label className="git-panel__checkbox">
-            <input
-              type="checkbox"
-              checked={isAmend}
-              onChange={(event) => setIsAmend(event.target.checked)}
-            />
-            Amend last commit
-          </label>
-          <button
-            onClick={handleCommit}
-            disabled={isCommitting || (!isAmend && (!commitMessage.trim() || stagedFiles.length === 0))}
-            className="git-panel__commit-btn"
-          >
-            {isCommitting ? "Committing..." : isAmend ? "Amend commit" : `Commit ${stagedFiles.length} files`}
-          </button>
+          </section>
         </div>
+
+        {/* MIDDLE: Diff */}
+        <section className="git-panel__column git-panel__column--diff">
+          <div className="git-panel__section-title git-panel__diff-title">
+            {selectedFile ?? "Diff"}
+          </div>
+          <div className="git-panel__diff-scroll">
+            <DiffView text={diffText} file={selectedFile} />
+          </div>
+        </section>
+
+        {/* RIGHT: Changes */}
+        <section className="git-panel__column git-panel__column--changes">
+          <section className="git-panel__section">
+            <div className="git-panel__section-title">Staged ({stagedFiles.length})</div>
+            <ul className="file-panel__list">
+              {stagedTree.length === 0 ? (
+                <li className="git-panel__empty">Nothing staged</li>
+              ) : (
+                stagedTree.map((node) => (
+                  <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} onAction={handleUnstage} onRevert={handleRevert} onSelect={setSelectedFile} selectedFile={selectedFile} />
+                ))
+              )}
+            </ul>
+          </section>
+
+          <section className="git-panel__section">
+            <div className="git-panel__section-title">Unstaged ({unstagedFiles.length})</div>
+            <ul className="file-panel__list">
+              {unstagedTree.length === 0 ? (
+                <li className="git-panel__empty">No changes</li>
+              ) : (
+                unstagedTree.map((node) => (
+                  <GitTreeItem key={`unstaged-${node.path}`} node={node} depth={0} onAction={handleStage} onRevert={handleRevert} onSelect={setSelectedFile} selectedFile={selectedFile} />
+                ))
+              )}
+            </ul>
+          </section>
+
+          <section className="git-panel__section git-panel__section--commit">
+            <div className="git-panel__section-title">Commit</div>
+            {statusMessage && <div className="git-panel__status">{statusMessage}</div>}
+            <div className="git-panel__commit-box">
+              <textarea
+                placeholder="Commit message..."
+                value={commitMessage}
+                onChange={(event) => setCommitMessage(event.target.value)}
+                className="git-panel__input"
+              />
+              <label className="git-panel__checkbox">
+                <input
+                  type="checkbox"
+                  checked={isAmend}
+                  onChange={(event) => setIsAmend(event.target.checked)}
+                />
+                Amend last commit
+              </label>
+              <button
+                onClick={handleCommit}
+                disabled={isCommitting || (!isAmend && (!commitMessage.trim() || stagedFiles.length === 0))}
+                className="git-panel__commit-btn"
+              >
+                {isCommitting ? "Committing..." : isAmend ? "Amend commit" : `Commit ${stagedFiles.length} files`}
+              </button>
+            </div>
+          </section>
+        </section>
       </div>
     </aside>
   );

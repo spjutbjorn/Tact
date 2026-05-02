@@ -492,6 +492,8 @@ export default function App() {
               activityBySessionId={terminalActivityBySessionId}
               sidebarOpen={terminalSidebarOpen}
             />
+          ) : showGit ? (
+            <GitPanel />
           ) : selectedFile ? (
             <FileViewer 
               key={selectedFile} 
@@ -557,12 +559,6 @@ export default function App() {
             }}
             onActivate={() => setActiveFileSide("right")}
             refreshToken={fileListRefreshToken}
-          />
-        )}
-        {showGit && showPanels && (
-          <GitPanel 
-            width={panelWidth} 
-            onWidthChange={setPanelWidth} 
           />
         )}
         {showPanels && (

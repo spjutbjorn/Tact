@@ -5,6 +5,7 @@ export namespace backend {
 	    name: string;
 	    model: string;
 	    command: string;
+	    installCommand: string;
 	    description: string;
 	
 	    static createFrom(source: any = {}) {
@@ -17,6 +18,7 @@ export namespace backend {
 	        this.name = source["name"];
 	        this.model = source["model"];
 	        this.command = source["command"];
+	        this.installCommand = source["installCommand"];
 	        this.description = source["description"];
 	    }
 	}

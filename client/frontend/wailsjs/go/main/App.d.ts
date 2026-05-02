@@ -15,11 +15,23 @@ export function GetCwd():Promise<string>;
 
 export function GitAdd(arg1:string):Promise<boolean>;
 
+export function GitBranchName():Promise<string>;
+
+export function GitBranches():Promise<Array<string>>;
+
+export function GitCheckoutBranch(arg1:string):Promise<boolean>;
+
 export function GitCommit(arg1:string,arg2:boolean):Promise<boolean>;
+
+export function GitCreateBranch(arg1:string):Promise<boolean>;
+
+export function GitDiff(arg1:string):Promise<string>;
 
 export function GitIgnore(arg1:string):Promise<boolean>;
 
 export function GitLastCommitMessage():Promise<string>;
+
+export function GitLog():Promise<string>;
 
 export function GitPush():Promise<boolean>;
 

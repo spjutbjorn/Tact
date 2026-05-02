@@ -66,7 +66,13 @@ interface WailsApp {
   GitLastCommitMessage: () => Promise<string>;
   GitCommit: (message: string, amend: boolean) => Promise<boolean>;
   GitPush: () => Promise<boolean>;
+  GitLog: () => Promise<string>;
+  GitBranchName: () => Promise<string>;
+  GitBranches: () => Promise<string[]>;
+  GitCreateBranch: (name: string) => Promise<boolean>;
+  GitCheckoutBranch: (name: string) => Promise<boolean>;
   GitRevert: (path: string) => Promise<boolean>;
+  GitDiff: (path: string) => Promise<string>;
 }
 
 function app(): WailsApp | undefined {
@@ -173,8 +179,26 @@ export const GitCommit = (message: string, amend: boolean): Promise<boolean> =>
 export const GitPush = (): Promise<boolean> =>
   app()?.GitPush() ?? Promise.resolve(false);
 
+export const GitLog = (): Promise<string> =>
+  app()?.GitLog() ?? Promise.resolve("");
+
+export const GitBranchName = (): Promise<string> =>
+  app()?.GitBranchName() ?? Promise.resolve("");
+
+export const GitBranches = (): Promise<string[]> =>
+  app()?.GitBranches() ?? Promise.resolve([]);
+
+export const GitCreateBranch = (name: string): Promise<boolean> =>
+  app()?.GitCreateBranch(name) ?? Promise.resolve(false);
+
+export const GitCheckoutBranch = (name: string): Promise<boolean> =>
+  app()?.GitCheckoutBranch(name) ?? Promise.resolve(false);
+
 export const GitRevert = (path: string): Promise<boolean> =>
   app()?.GitRevert(path) ?? Promise.resolve(false);
+
+export const GitDiff = (path: string): Promise<string> =>
+  app()?.GitDiff(path) ?? Promise.resolve("");
 
 export const BrowserOpenURL = (url: string) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

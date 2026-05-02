@@ -26,8 +26,28 @@ export function GitAdd(arg1) {
   return window['go']['main']['App']['GitAdd'](arg1);
 }
 
+export function GitBranchName() {
+  return window['go']['main']['App']['GitBranchName']();
+}
+
+export function GitBranches() {
+  return window['go']['main']['App']['GitBranches']();
+}
+
+export function GitCheckoutBranch(arg1) {
+  return window['go']['main']['App']['GitCheckoutBranch'](arg1);
+}
+
 export function GitCommit(arg1, arg2) {
   return window['go']['main']['App']['GitCommit'](arg1, arg2);
+}
+
+export function GitCreateBranch(arg1) {
+  return window['go']['main']['App']['GitCreateBranch'](arg1);
+}
+
+export function GitDiff(arg1) {
+  return window['go']['main']['App']['GitDiff'](arg1);
 }
 
 export function GitIgnore(arg1) {
@@ -36,6 +56,10 @@ export function GitIgnore(arg1) {
 
 export function GitLastCommitMessage() {
   return window['go']['main']['App']['GitLastCommitMessage']();
+}
+
+export function GitLog() {
+  return window['go']['main']['App']['GitLog']();
 }
 
 export function GitPush() {
