@@ -1,15 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FileEntry, ListDir, WriteTextFile, Rename } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 
+type FileSide = "left" | "right";
+
 interface Props {
+  side: FileSide;
   path: string;
-  selectedFile: string | null;
+  selectedPath: string | null;
+  active: boolean;
+  dualMode: boolean;
+  isMirror: boolean;
   width: number;
   onWidthChange: (w: number) => void;
   onNavigate: (path: string) => void;
   onSelectFile: (path: string) => void;
+  onCursorChange: (path: string) => void;
   onDelete: (path: string) => void;
+  onCopySelection: () => void;
+  onMoveSelection: () => void;
+  onActivate: () => void;
   refreshToken: number;
 }
 
@@ -75,11 +85,12 @@ interface TreeItemProps {
   name: string;
   isDir: boolean;
   depth: number;
-  selectedFile: string | null;
+  selectedPath: string | null;
   renamingPath: string | null;
   renameValue: string;
   onSelectFile: (p: string) => void;
   onNavigate: (p: string) => void;
+  onCursorChange: (p: string) => void;
   onDelete: (p: string) => void;
   setRenamingPath: (p: string | null) => void;
   setRenameValue: (v: string) => void;
@@ -88,13 +99,13 @@ interface TreeItemProps {
 }
 
 function FileTreeItem({ 
-  path, name, isDir, depth, selectedFile, renamingPath, renameValue,
-  onSelectFile, onNavigate, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown
+  path, name, isDir, depth, selectedPath, renamingPath, renameValue,
+  onSelectFile, onNavigate, onCursorChange, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown
 }: TreeItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const fullPath = joinPath(path, name);
-  const active = fullPath === selectedFile;
+  const active = fullPath === selectedPath;
   const isRenaming = fullPath === renamingPath;
 
   useEffect(() => {
@@ -109,6 +120,7 @@ function FileTreeItem({
   };
 
   const handleClick = () => {
+    onCursorChange(fullPath);
     if (isDir) {
       onNavigate(fullPath);
     } else if (isZipArchivePath(fullPath)) {
@@ -134,6 +146,9 @@ function FileTreeItem({
         </div>
       ) : (
         <div
+          data-file-row="true"
+          data-path={fullPath}
+          data-is-dir={isDir ? "true" : "false"}
           className={`file-panel__entry ${isDir ? "file-panel__entry--dir" : "file-panel__entry--file"}${active ? " file-panel__entry--active" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 12}px` }}
         >
@@ -168,11 +183,12 @@ function FileTreeItem({
               name={child.name}
               isDir={child.isDir}
               depth={depth + 1}
-              selectedFile={selectedFile}
+              selectedPath={selectedPath}
               renamingPath={renamingPath}
               renameValue={renameValue}
               onSelectFile={onSelectFile}
               onNavigate={onNavigate}
+              onCursorChange={onCursorChange}
               onDelete={onDelete}
               setRenamingPath={setRenamingPath}
               setRenameValue={setRenameValue}
@@ -187,13 +203,21 @@ function FileTreeItem({
 }
 
 export default function FilePanel({
+  side,
   path,
-  selectedFile,
+  selectedPath,
+  active,
+  dualMode,
+  isMirror,
   width,
   onWidthChange,
   onNavigate,
   onSelectFile,
+  onCursorChange,
   onDelete,
+  onCopySelection,
+  onMoveSelection,
+  onActivate,
   refreshToken,
 }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -202,6 +226,7 @@ export default function FilePanel({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = () => {
     if (path) ListDir(path).then(res => setEntries(res || []));
@@ -210,6 +235,76 @@ export default function FilePanel({
   useEffect(() => {
     refresh();
   }, [path, refreshToken]);
+
+  useEffect(() => {
+    if (active) {
+      rootRef.current?.focus();
+    }
+  }, [active, path, selectedPath, dualMode]);
+
+  useEffect(() => {
+    if (!selectedPath) return;
+    const row = rootRef.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(selectedPath)}"]`);
+    row?.scrollIntoView({ block: "center" });
+  }, [selectedPath, entries.length, path]);
+
+  useEffect(() => {
+    function handleWindowKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      if (side === "left") {
+        if (key === "w") {
+          e.preventDefault();
+          moveCursor(-1);
+          return;
+        }
+        if (key === "s") {
+          e.preventDefault();
+          moveCursor(1);
+          return;
+        }
+        if (dualMode && key === "d") {
+          e.preventDefault();
+          onCopySelection();
+          return;
+        }
+        if (dualMode && key === "a") {
+          e.preventDefault();
+          onMoveSelection();
+          return;
+        }
+      } else {
+        if (key === "arrowup") {
+          e.preventDefault();
+          moveCursor(-1);
+          return;
+        }
+        if (key === "arrowdown") {
+          e.preventDefault();
+          moveCursor(1);
+          return;
+        }
+        if (dualMode && key === "arrowleft") {
+          e.preventDefault();
+          onCopySelection();
+          return;
+        }
+        if (dualMode && key === "arrowright") {
+          e.preventDefault();
+          onMoveSelection();
+          return;
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => window.removeEventListener("keydown", handleWindowKeyDown);
+  }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange]);
 
   const filteredEntries = entries.filter(e => showHidden || !e.name.startsWith("."));
 
@@ -223,6 +318,7 @@ export default function FilePanel({
     if (ok) {
       refresh();
       onSelectFile(fullPath);
+      onCursorChange(fullPath);
     }
     setNewFileName("");
     setIsCreatingFile(false);
@@ -243,6 +339,7 @@ export default function FilePanel({
     if (ok) {
       refresh();
       onSelectFile(newPath);
+      onCursorChange(newPath);
     }
     setRenamingPath(null);
   }
@@ -261,9 +358,9 @@ export default function FilePanel({
   }
 
   function startRename() {
-    if (!selectedFile) return;
-    const name = basename(selectedFile);
-    setRenamingPath(selectedFile);
+    if (!selectedPath) return;
+    const name = basename(selectedPath);
+    setRenamingPath(selectedPath);
     setRenameValue(name);
   }
 
@@ -287,9 +384,80 @@ export default function FilePanel({
     document.addEventListener("mouseup", onUp);
   }
 
+  function moveCursor(delta: number) {
+    const rows = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('[data-file-row="true"]') ?? []);
+    if (!rows.length) return;
+    const currentIndex = rows.findIndex((row) => row.dataset.path === selectedPath);
+    const nextIndex = currentIndex === -1 ? 0 : Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
+    const nextPath = rows[nextIndex]?.dataset.path;
+    if (nextPath) {
+      onCursorChange(nextPath);
+    }
+  }
+
+  function getSelectedRow() {
+    if (!selectedPath) return null;
+    return rootRef.current?.querySelector<HTMLElement>(`[data-path="${CSS.escape(selectedPath)}"]`);
+  }
+
+  function focusPanel() {
+    onActivate();
+    rootRef.current?.focus();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!active) {
+      return;
+    }
+    const target = e.target as HTMLElement | null;
+    const tagName = target?.tagName?.toLowerCase();
+    if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+      return;
+    }
+    const key = e.key.toLowerCase();
+    if (key === "e") {
+      e.preventDefault();
+      if (path && path !== "/") {
+        onNavigate(dirname(path));
+      }
+      focusPanel();
+      return;
+    }
+
+    if (key === "enter" || key === "q") {
+      const row = getSelectedRow();
+      if (!row || !selectedPath) return;
+      e.preventDefault();
+      if (row.dataset.isDir === "true") {
+        onNavigate(selectedPath);
+      } else if (isZipArchivePath(selectedPath)) {
+        onNavigate(`${selectedPath}::`);
+      } else {
+        onSelectFile(selectedPath);
+      }
+      focusPanel();
+      return;
+    }
+  }
+
+  function handleRowClick(nextPath: string, nextIsDir: boolean) {
+    onCursorChange(nextPath);
+    if (!nextIsDir) {
+      onSelectFile(nextPath);
+    }
+  }
+
   return (
-    <aside className="file-panel" style={{ width }}>
-      <div className="file-panel__resize-handle" onMouseDown={startResize} />
+    <aside
+      ref={rootRef}
+      className={`file-panel file-panel--${side}${active ? " file-panel--active" : ""}${isMirror ? " file-panel--mirror" : ""}`}
+      style={{ width }}
+      onKeyDown={handleKeyDown}
+      onFocus={onActivate}
+      onMouseDownCapture={focusPanel}
+      tabIndex={0}
+    >
+      <div className={`file-panel__resize-handle file-panel__resize-handle--${side}`} onMouseDown={startResize} />
       <div className="file-panel__header">
         <span>Files</span>
         <div className="file-panel__header-actions">
@@ -303,7 +471,7 @@ export default function FilePanel({
               <path d="M0 8s3-5.5 8-5.5S16 8 16 8s-3 5.5-8 5.5S0 8 0 8zm8 3.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>
             </svg>
           </button>
-          <button className="file-panel__new-btn" onClick={startRename} title="Rename Selected" disabled={!selectedFile}>
+          <button className="file-panel__new-btn" onClick={startRename} title="Rename Selected" disabled={!selectedPath}>
             <RenameIcon />
           </button>
           <button className="file-panel__new-btn" onClick={() => setIsCreatingFile(true)} title="New File">
@@ -328,9 +496,13 @@ export default function FilePanel({
         )}
         {path && path !== "/" && (
           <li>
-            <button
-              className="file-panel__entry file-panel__entry--dir"
-              onClick={() => {
+          <button
+            data-file-row="true"
+            data-path={dirname(path)}
+            data-is-dir="true"
+            className={`file-panel__entry file-panel__entry--dir${selectedPath === dirname(path) ? " file-panel__entry--active" : ""}`}
+            onClick={() => {
+                handleRowClick(dirname(path), true);
                 onNavigate(dirname(path));
               }}
             >
@@ -348,11 +520,12 @@ export default function FilePanel({
             name={e.name}
             isDir={e.isDir}
             depth={0}
-            selectedFile={selectedFile}
+            selectedPath={selectedPath}
             renamingPath={renamingPath}
             renameValue={renameValue}
             onSelectFile={onSelectFile}
             onNavigate={onNavigate}
+            onCursorChange={onCursorChange}
             onDelete={onDelete}
             setRenamingPath={setRenamingPath}
             setRenameValue={setRenameValue}

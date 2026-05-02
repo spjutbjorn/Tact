@@ -17,6 +17,18 @@ const ICONS: Icon[] = [
     ),
   },
   {
+    id: "transfer",
+    title: "Split Files",
+    svg: () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 6h11" />
+        <path d="M8 18h11" />
+        <path d="M3 6l3 3-3 3" />
+        <path d="M3 18l3-3-3-3" />
+      </svg>
+    ),
+  },
+  {
     id: "git",
     title: "Git Status",
     svg: () => (
@@ -43,12 +55,25 @@ function GearIcon() {
 interface Props {
   activePanel: string | null;
   onToggle: (id: string) => void;
+  dualFiles: boolean;
+  onToggleDualFiles: () => void;
 }
 
-export default function IconBar({ activePanel, onToggle }: Props) {
+export default function IconBar({ activePanel, onToggle, dualFiles, onToggleDualFiles }: Props) {
   return (
     <div className="icon-bar">
       {ICONS.map((icon) => (
+        icon.id === "transfer" ? (
+          <button
+            key={icon.id}
+            className={`icon-bar__btn${dualFiles ? " icon-bar__btn--active" : ""}`}
+            title={icon.title}
+            onClick={onToggleDualFiles}
+            aria-pressed={dualFiles}
+          >
+            <icon.svg />
+          </button>
+        ) : (
         <button
           key={icon.id}
           className={`icon-bar__btn${activePanel === icon.id ? " icon-bar__btn--active" : ""}`}
@@ -58,6 +83,7 @@ export default function IconBar({ activePanel, onToggle }: Props) {
         >
           <icon.svg />
         </button>
+        )
       ))}
       <div className="icon-bar__spacer" />
       <button

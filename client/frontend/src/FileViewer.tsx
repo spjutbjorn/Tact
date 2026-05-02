@@ -111,9 +111,10 @@ function VideoViewer({ path, mime }: { path: string; mime: string }) {
   );
 }
 
-function TextEditor({ path, onSelectFile, previewMode, onDirtyChange }: { 
+function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDirtyChange }: { 
   path: string; 
   onSelectFile?: (p: string) => void;
+  onExitToFolderView: () => void;
   previewMode: boolean;
   onDirtyChange: (d: boolean) => void;
 }) {
@@ -157,6 +158,11 @@ function TextEditor({ path, onSelectFile, previewMode, onDirtyChange }: {
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
       e.preventDefault();
       save();
+      return;
+    }
+    if (e.key === "Enter" || e.key.toLowerCase() === "q") {
+      e.preventDefault();
+      onExitToFolderView();
     }
   }
 
@@ -205,9 +211,10 @@ function TextEditor({ path, onSelectFile, previewMode, onDirtyChange }: {
   );
 }
 
-export default function FileViewer({ path, onSelectFile, previewMode, onDirtyChange }: { 
+export default function FileViewer({ path, onSelectFile, onExitToFolderView, previewMode, onDirtyChange }: { 
   path: string; 
   onSelectFile?: (p: string) => void;
+  onExitToFolderView: () => void;
   previewMode: boolean;
   onDirtyChange: (d: boolean) => void;
 }) {
@@ -217,5 +224,5 @@ export default function FileViewer({ path, onSelectFile, previewMode, onDirtyCha
   if (imgMime) return <ImageViewer path={path} mime={imgMime} />;
   const vidMime = videoMime(path);
   if (vidMime) return <VideoViewer path={path} mime={vidMime} />;
-  return <TextEditor path={path} onSelectFile={onSelectFile} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
+  return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
 }

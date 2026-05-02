@@ -24,6 +24,8 @@ interface WailsApp {
   ReadBinaryFile: (path: string) => Promise<string>;
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
+  CopyPath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
+  MovePath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
   GitStatus: () => Promise<GitFileStatus[]>;
   GitAdd: (path: string) => Promise<boolean>;
   GitUnstage: (path: string) => Promise<boolean>;
@@ -68,6 +70,12 @@ export const Rename = (oldPath: string, newPath: string): Promise<boolean> =>
 
 export const DeleteFile = (path: string): Promise<boolean> =>
   app()?.DeleteFile(path) ?? Promise.resolve(false);
+
+export const CopyPath = (sourcePath: string, destinationDir: string): Promise<boolean> =>
+  app()?.CopyPath(sourcePath, destinationDir) ?? Promise.resolve(false);
+
+export const MovePath = (sourcePath: string, destinationDir: string): Promise<boolean> =>
+  app()?.MovePath(sourcePath, destinationDir) ?? Promise.resolve(false);
 
 export const GitStatus = (): Promise<GitFileStatus[]> =>
   app()?.GitStatus() ?? Promise.resolve([]);

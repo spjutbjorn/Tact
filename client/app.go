@@ -135,6 +135,133 @@ func (a *App) DeleteFile(path string) bool {
 	return os.Remove(path) == nil
 }
 
+func (a *App) CopyPath(sourcePath, destinationDir string) bool {
+	if sourcePath == "" || destinationDir == "" || strings.Contains(destinationDir, "::") {
+		return false
+	}
+
+	info, err := os.Stat(destinationDir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+
+	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
+	return copyPathRecursive(a, sourcePath, targetPath)
+}
+
+func (a *App) MovePath(sourcePath, destinationDir string) bool {
+	if sourcePath == "" || destinationDir == "" || strings.Contains(destinationDir, "::") {
+		return false
+	}
+
+	info, err := os.Stat(destinationDir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+
+	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
+
+	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
+		if archivePath == "" || innerPath == "" {
+			return false
+		}
+		if !copyPathRecursive(a, sourcePath, targetPath) {
+			return false
+		}
+		return deleteZipEntry(archivePath, innerPath)
+	}
+
+	if err := os.Rename(sourcePath, targetPath); err == nil {
+		return true
+	}
+
+	if !copyPathRecursive(a, sourcePath, targetPath) {
+		return false
+	}
+	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
+		return os.RemoveAll(sourcePath) == nil
+	}
+	return os.Remove(sourcePath) == nil
+}
+
+func copyBaseName(path string) string {
+	if archivePath, innerPath, ok := splitVirtualZipPath(path); ok {
+		if innerPath == "" {
+			return filepath.Base(archivePath)
+		}
+		return filepath.Base(innerPath)
+	}
+	return filepath.Base(path)
+}
+
+func joinCopyPath(parent, child string) string {
+	if strings.HasSuffix(parent, "::") {
+		return parent + child
+	}
+	if strings.Contains(parent, "::") {
+		return parent + "/" + child
+	}
+	return filepath.Join(parent, child)
+}
+
+func copyPathRecursive(a *App, sourcePath, targetPath string) bool {
+	if data, ok := readPathBytes(sourcePath); ok {
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return false
+		}
+		return os.WriteFile(targetPath, data, 0644) == nil
+	}
+
+	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
+		if archivePath == "" || innerPath == "" {
+			return false
+		}
+		children := a.ListDir(sourcePath)
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			return false
+		}
+		for _, child := range children {
+			childSource := joinCopyPath(sourcePath, child.Name)
+			childTarget := filepath.Join(targetPath, child.Name)
+			if !copyPathRecursive(a, childSource, childTarget) {
+				return false
+			}
+		}
+		return true
+	}
+
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return false
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			return false
+		}
+		entries, err := os.ReadDir(sourcePath)
+		if err != nil {
+			return false
+		}
+		for _, entry := range entries {
+			childSource := filepath.Join(sourcePath, entry.Name())
+			childTarget := filepath.Join(targetPath, entry.Name())
+			if !copyPathRecursive(a, childSource, childTarget) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		return false
+	}
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return false
+	}
+	return os.WriteFile(targetPath, data, 0644) == nil
+}
+
 func deleteZipEntry(archivePath, innerPath string) bool {
 	if archivePath == "" || innerPath == "" {
 		return false
