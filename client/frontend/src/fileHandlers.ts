@@ -11,9 +11,10 @@ export interface FileHandlerSettings {
   version: number;
   textExtensions: string[];
   hiddenNames: string[];
+  highlightSharedFiles: boolean;
 }
 
-const CURRENT_VERSION = 4;
+const CURRENT_VERSION = 5;
 
 export const DEFAULT_HIDDEN_NAMES: readonly string[] = [
   "node_modules",
@@ -133,10 +134,11 @@ export function loadFileHandlerSettings(): FileHandlerSettings {
         version: parsed.version ?? 0,
         textExtensions: Array.isArray(parsed.textExtensions) ? parsed.textExtensions : [...DEFAULT_TEXT_EXTENSIONS],
         hiddenNames: Array.isArray(parsed.hiddenNames) ? parsed.hiddenNames : [...DEFAULT_HIDDEN_NAMES],
+        highlightSharedFiles: parsed.highlightSharedFiles ?? true,
       };
 
-      // Migration to version 4: Re-add Volumes and ensure current defaults
-      if (settings.version < 4) {
+      // Migration to version 5: Add shared-file highlighting.
+      if (settings.version < 5) {
         const current = new Set(settings.hiddenNames);
         
         // Add all current defaults (including Volumes)
@@ -146,7 +148,8 @@ export function loadFileHandlerSettings(): FileHandlerSettings {
         current.delete("Applications");
         
         settings.hiddenNames = Array.from(current).sort();
-        settings.version = 4;
+        settings.highlightSharedFiles = parsed.highlightSharedFiles ?? true;
+        settings.version = 5;
         saveFileHandlerSettings(settings);
       }
 
@@ -159,6 +162,7 @@ export function loadFileHandlerSettings(): FileHandlerSettings {
     version: CURRENT_VERSION,
     textExtensions: [...DEFAULT_TEXT_EXTENSIONS],
     hiddenNames: [...DEFAULT_HIDDEN_NAMES],
+    highlightSharedFiles: true,
   };
 }
 

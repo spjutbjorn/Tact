@@ -11,6 +11,8 @@ export function DeleteFile(arg1:string):Promise<boolean>;
 
 export function DirSize(arg1:string):Promise<number>;
 
+export function GemmaMemory():Promise<main.GemmaMemoryInfo>;
+
 export function GetCwd():Promise<string>;
 
 export function GitAdd(arg1:string):Promise<boolean>;
@@ -37,6 +39,10 @@ export function GitPush():Promise<boolean>;
 
 export function GitRevert(arg1:string):Promise<boolean>;
 
+export function GitRoot():Promise<string>;
+
+export function GitShow(arg1:string,arg2:string):Promise<string>;
+
 export function GitStatus():Promise<Array<main.GitFileStatus>>;
 
 export function GitUnstage(arg1:string):Promise<boolean>;
@@ -49,11 +55,21 @@ export function LaunchTerminalProfileAtSized(arg1:string,arg2:string,arg3:number
 
 export function ListDir(arg1:string):Promise<Array<main.FileEntry>>;
 
+export function ListRecursiveFiles(arg1:string):Promise<Array<main.FileEntry>>;
+
 export function ListVolumes():Promise<Array<main.VolumeInfo>>;
+
+export function MemoryUsage():Promise<Record<string, number>>;
+
+export function MkDir(arg1:string):Promise<boolean>;
 
 export function MovePath(arg1:string,arg2:string):Promise<boolean>;
 
 export function Navigate(arg1:string):Promise<string>;
+
+export function OllamaChat(arg1:string,arg2:Array<main.OllamaChatMsg>,arg3:Array<string>,arg4:string,arg5:string,arg6:Array<string>):Promise<void>;
+
+export function PathIsDir(arg1:string):Promise<boolean>;
 
 export function Ping():Promise<string>;
 

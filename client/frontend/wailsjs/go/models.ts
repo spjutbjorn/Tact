@@ -43,6 +43,20 @@ export namespace main {
 	        this.size = source["size"];
 	    }
 	}
+	export class GemmaMemoryInfo {
+	    used: number;
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new GemmaMemoryInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.used = source["used"];
+	        this.total = source["total"];
+	    }
+	}
 	export class GitFileStatus {
 	    path: string;
 	    status: string;
@@ -55,6 +69,24 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.status = source["status"];
+	    }
+	}
+	export class OllamaChatMsg {
+	    role: string;
+	    content: string;
+	    thinking?: string;
+	    images?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OllamaChatMsg(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.thinking = source["thinking"];
+	        this.images = source["images"];
 	    }
 	}
 	export class TerminalSessionInfo {

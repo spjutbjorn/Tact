@@ -2,9 +2,44 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { renderAsync } from "docx-preview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Editor from "@monaco-editor/react";
 import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir } from "./wails";
-import { basename, dirname, isMarkdownPath, isJsonPath, joinPath } from "./path";
+import { basename, dirname, isMarkdownPath, isJsonPath, joinPath, extname } from "./path";
 import { type FileHandlerSettings, getFileHandler, imageMime, videoMime, audioMime } from "./fileHandlers";
+
+function getMonacoLanguage(path: string): string {
+  const ext = extname(path).toLowerCase().replace(/^\./, "");
+  switch (ext) {
+    case "js": return "javascript";
+    case "ts": return "typescript";
+    case "tsx": return "typescript";
+    case "jsx": return "javascript";
+    case "json": return "json";
+    case "md": return "markdown";
+    case "html": return "html";
+    case "css": return "css";
+    case "scss": return "scss";
+    case "less": return "less";
+    case "py": return "python";
+    case "go": return "go";
+    case "rs": return "rust";
+    case "cpp": return "cpp";
+    case "c": return "c";
+    case "h": return "cpp";
+    case "java": return "java";
+    case "cs": return "csharp";
+    case "rb": return "ruby";
+    case "php": return "php";
+    case "sql": return "sql";
+    case "yaml": return "yaml";
+    case "yml": return "yaml";
+    case "xml": return "xml";
+    case "sh": return "shell";
+    case "bash": return "shell";
+    case "dockerfile": return "dockerfile";
+    default: return "plaintext";
+  }
+}
 
 function mediaMime(path: string): string | null {
   return imageMime(path) ?? videoMime(path) ?? audioMime(path);
@@ -509,7 +544,6 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
   const md = isMarkdownPath(path);
   const json = isJsonPath(path);
   const [saving, setSaving] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const dirty = content !== saved;
   
@@ -541,16 +575,8 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
     return () => window.removeEventListener("tact:save", handleGlobalSave);
   }, [content, saved, saving]);
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-      e.preventDefault();
-      save();
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onExitToFolderView();
-    }
+  function handleEditorChange(value: string | undefined) {
+    setContent(value ?? "");
   }
 
   function handleLinkClick(e: React.MouseEvent<HTMLAnchorElement>) {
@@ -588,14 +614,38 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
           <JsonHighlighter content={content} />
         </div>
       ) : (
-        <textarea
-          ref={textareaRef}
-          className="editor__textarea"
+        <Editor
+          height="100%"
+          language={getMonacoLanguage(path)}
+          theme="vs-dark"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          autoFocus
+          onChange={handleEditorChange}
+          onMount={(editor) => {
+            editor.focus();
+            editor.onKeyDown((event) => {
+              const key = event.browserEvent.key;
+              if (key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                onExitToFolderView();
+                return;
+              }
+              if ((event.browserEvent.ctrlKey || event.browserEvent.metaKey) && key.toLowerCase() === "s") {
+                event.preventDefault();
+                event.stopPropagation();
+                void save();
+              }
+            });
+          }}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace',
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            padding: { top: 20 },
+            automaticLayout: true,
+          }}
         />
       )}
     </div>

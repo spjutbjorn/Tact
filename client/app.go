@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -204,6 +206,15 @@ func (a *App) GitDiff(path string) string {
 	return string(out)
 }
 
+func (a *App) GitShow(revision, path string) string {
+	cmd := a.gitCommand("show", revision+":"+path)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
 func (a *App) DeleteFile(path string) bool {
 	if path == "" || strings.Contains(path, "::") {
 		if archivePath, innerPath, ok := splitVirtualZipPath(path); ok {
@@ -233,6 +244,9 @@ func (a *App) CopyPath(sourcePath, destinationDir string) bool {
 	}
 
 	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
+	if sameOrNestedPath(sourcePath, targetPath) {
+		return false
+	}
 	return copyPathRecursive(a, sourcePath, targetPath)
 }
 
@@ -247,6 +261,9 @@ func (a *App) MovePath(sourcePath, destinationDir string) bool {
 	}
 
 	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
+	if sameOrNestedPath(sourcePath, targetPath) {
+		return false
+	}
 
 	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
 		if archivePath == "" || innerPath == "" {
@@ -279,6 +296,16 @@ func copyBaseName(path string) string {
 		return filepath.Base(innerPath)
 	}
 	return filepath.Base(path)
+}
+
+func sameOrNestedPath(sourcePath, targetPath string) bool {
+	sourcePath = filepath.Clean(sourcePath)
+	targetPath = filepath.Clean(targetPath)
+	if sourcePath == targetPath {
+		return true
+	}
+	prefix := sourcePath + string(os.PathSeparator)
+	return strings.HasPrefix(targetPath, prefix)
 }
 
 func joinCopyPath(parent, child string) string {
@@ -479,6 +506,10 @@ func NewApp() *App {
 		backend:          backend.New(),
 		terminalSessions: map[string]*terminalSession{},
 	}
+}
+
+func (a *App) GitRoot() string {
+	return a.gitRoot()
 }
 
 func (a *App) gitRoot() string {
@@ -1392,6 +1423,10 @@ func (a *App) WriteTextFile(path string, content string) bool {
 	return os.WriteFile(path, []byte(content), 0644) == nil
 }
 
+func (a *App) MkDir(path string) bool {
+	return os.Mkdir(path, 0755) == nil
+}
+
 func (a *App) ReadBinaryFile(path string) string {
 	data, ok := readPathBytes(path)
 	if !ok {
@@ -1441,6 +1476,28 @@ func (a *App) PrepareVideoPath(path string) string {
 
 func (a *App) Rename(oldPath, newPath string) bool {
 	return os.Rename(oldPath, newPath) == nil
+}
+
+func (a *App) PathIsDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func (a *App) collectRecursiveFileEntries(path string) []FileEntry {
+	entries := a.ListDir(path)
+	if len(entries) == 0 {
+		return nil
+	}
+	result := make([]FileEntry, 0, len(entries))
+	for _, entry := range entries {
+		fullPath := joinCopyPath(path, entry.Name)
+		if entry.IsDir {
+			result = append(result, a.collectRecursiveFileEntries(fullPath)...)
+			continue
+		}
+		result = append(result, FileEntry{Name: fullPath, IsDir: false, Size: entry.Size})
+	}
+	return result
 }
 
 func (a *App) ListDir(path string) []FileEntry {
@@ -1521,6 +1578,327 @@ func (a *App) ListDir(path string) []FileEntry {
 		}
 		return result[i].Name < result[j].Name
 	})
+	return result
+}
+
+func (a *App) ListRecursiveFiles(path string) []FileEntry {
+	return a.collectRecursiveFileEntries(path)
+}
+
+type OllamaChatMsg struct {
+	Role     string   `json:"role"`
+	Content  string   `json:"content"`
+	Thinking string   `json:"thinking,omitempty"`
+	Images   []string `json:"images,omitempty"`
+}
+
+type GemmaMemoryInfo struct {
+	Used  int64 `json:"used"`
+	Total int64 `json:"total"`
+}
+
+func (a *App) GemmaMemory() GemmaMemoryInfo {
+	total := int64(0)
+	if out, err := exec.Command("sysctl", "-n", "hw.memsize").Output(); err == nil {
+		fmt.Sscan(strings.TrimSpace(string(out)), &total)
+	}
+
+	resp, err := http.Get("http://localhost:11434/api/ps")
+	if err != nil {
+		return GemmaMemoryInfo{Total: total}
+	}
+	defer resp.Body.Close()
+
+	var ps struct {
+		Models []struct {
+			Name     string `json:"name"`
+			SizeVram int64  `json:"size_vram"`
+			Size     int64  `json:"size"`
+		} `json:"models"`
+	}
+	if err2 := json.NewDecoder(resp.Body).Decode(&ps); err2 != nil {
+		return GemmaMemoryInfo{Total: total}
+	}
+
+	for _, m := range ps.Models {
+		if strings.Contains(m.Name, "gemma4") {
+			used := m.SizeVram
+			if used == 0 {
+				used = m.Size
+			}
+			return GemmaMemoryInfo{Used: used, Total: total}
+		}
+	}
+	return GemmaMemoryInfo{Total: total}
+}
+
+func ollamaReachable() bool {
+	resp, err := http.Get("http://localhost:11434/")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
+}
+
+func ensureOllama() {
+	if ollamaReachable() {
+		return
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/zsh"
+	}
+	cmd := exec.Command(shell, "-ilc", "nohup ollama serve >/dev/null 2>&1 &")
+	_ = cmd.Run()
+	for i := 0; i < 10; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if ollamaReachable() {
+			return
+		}
+	}
+}
+
+func collectContextPaths(paths []string, maxFiles int, maxBytes int64) []string {
+	seen := make(map[string]struct{}, len(paths))
+	collected := make([]string, 0, len(paths))
+	var totalBytes int64
+	for _, root := range paths {
+		if root == "" {
+			continue
+		}
+		info, err := os.Stat(root)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			if _, ok := seen[root]; ok {
+				continue
+			}
+			if maxFiles > 0 && len(collected) >= maxFiles {
+				break
+			}
+			seen[root] = struct{}{}
+			collected = append(collected, root)
+			continue
+		}
+
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if maxFiles > 0 && len(collected) >= maxFiles {
+				return filepath.SkipAll
+			}
+			if _, ok := seen[path]; ok {
+				return nil
+			}
+			if maxBytes > 0 {
+				if info, err := d.Info(); err == nil {
+					if totalBytes+info.Size() > maxBytes {
+						return filepath.SkipAll
+					}
+					totalBytes += info.Size()
+				}
+			}
+			seen[path] = struct{}{}
+			collected = append(collected, path)
+			return nil
+		})
+	}
+	return collected
+}
+
+func (a *App) OllamaChat(chatID string, messages []OllamaChatMsg, contextFiles []string, mode string, currentPath string, focusFiles []string) {
+	go func() {
+		ensureOllama()
+		focusFolderNames := make([]string, 0, len(focusFiles))
+		focusRoots := make([]string, 0, len(focusFiles))
+		for _, root := range focusFiles {
+			if root == "" {
+				continue
+			}
+			info, err := os.Stat(root)
+			if err != nil {
+				continue
+			}
+			focusRoots = append(focusRoots, root)
+			if info.IsDir() {
+				focusFolderNames = append(focusFolderNames, filepath.Base(root))
+			}
+		}
+		focusFiles = collectContextPaths(focusRoots, 24, 250_000)
+		var ctxParts []string
+		var ctxImages []string
+		contextNames := make([]string, 0, len(contextFiles))
+		focusNames := make([]string, 0, len(focusFiles))
+		focusParts := make([]string, 0, len(focusFiles))
+		for _, fpath := range contextFiles {
+			contextNames = append(contextNames, filepath.Base(fpath))
+			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fpath), "."))
+			data, err := os.ReadFile(fpath)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			switch ext {
+			case "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "avif":
+				if len(data) > 12_000_000 {
+					continue
+				}
+				ctxImages = append(ctxImages, base64.StdEncoding.EncodeToString(data))
+			default:
+				if len(data) > 150_000 || !utf8.Valid(data) {
+					continue
+				}
+				ctxParts = append(ctxParts, fmt.Sprintf("### %s\n```\n%s\n```", filepath.Base(fpath), strings.TrimSpace(string(data))))
+			}
+		}
+		for _, fpath := range focusFiles {
+			focusNames = append(focusNames, filepath.Base(fpath))
+			data, err := os.ReadFile(fpath)
+			if err != nil || len(data) == 0 || len(data) > 150_000 || !utf8.Valid(data) {
+				continue
+			}
+			focusParts = append(focusParts, fmt.Sprintf("### %s\n```\n%s\n```", filepath.Base(fpath), strings.TrimSpace(string(data))))
+		}
+		mode = strings.ToLower(strings.TrimSpace(mode))
+		systemParts := make([]string, 0, 3)
+		switch mode {
+		case "thinking":
+			systemParts = append(systemParts, "Think carefully before answering. Use the model's thinking channel if available, then provide the final answer clearly.")
+		case "expert":
+			systemParts = append(systemParts, "Act as an expert assistant. Be precise, rigorous, and careful with assumptions. Use extended reasoning if available before giving the final answer.")
+		default:
+			systemParts = append(systemParts, "Answer directly, clearly, and concisely.")
+		}
+		if len(ctxParts) > 0 {
+			systemParts = append(systemParts, "You have access to the following files:\n\n"+strings.Join(ctxParts, "\n\n"))
+		}
+		if len(focusParts) > 0 {
+			systemParts = append(systemParts, "The user is referring to these exact files. Prioritize them and do not claim they are missing:\n\n"+strings.Join(focusParts, "\n\n"))
+		}
+		if len(focusFolderNames) > 0 {
+			systemParts = append(systemParts, "The user is referring to these exact folders: "+strings.Join(focusFolderNames, ", "))
+		}
+		if len(ctxImages) > 0 {
+			systemParts = append(systemParts, "The final user message includes attached images. Use them when answering.")
+		}
+		if currentPath != "" {
+			systemParts = append(systemParts, "Current folder: "+currentPath)
+		}
+		if len(contextNames) > 0 {
+			systemParts = append(systemParts, "Available file names in this folder: "+strings.Join(contextNames, ", "))
+		}
+		if len(focusNames) > 0 {
+			systemParts = append(systemParts, "Focused file names: "+strings.Join(focusNames, ", "))
+		}
+
+		msgs := make([]OllamaChatMsg, 0, len(messages)+1)
+		if len(systemParts) > 0 {
+			msgs = append(msgs, OllamaChatMsg{
+				Role:    "system",
+				Content: strings.Join(systemParts, "\n\n"),
+			})
+		}
+		msgs = append(msgs, messages...)
+		if len(ctxImages) > 0 && len(msgs) > 0 {
+			last := msgs[len(msgs)-1]
+			last.Images = append(last.Images, ctxImages...)
+			msgs[len(msgs)-1] = last
+		}
+
+		think := mode != "standard" && mode != ""
+		body, _ := json.Marshal(map[string]any{"model": "gemma4:e4b", "messages": msgs, "stream": true, "think": think})
+		resp, err := http.Post("http://localhost:11434/api/chat", "application/json", bytes.NewReader(body))
+		if err != nil {
+			if a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "gemma:error", chatID, "Could not connect to ollama: "+err.Error())
+			}
+			return
+		}
+		defer resp.Body.Close()
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 256*1024), 256*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			var chunk struct {
+				Message         OllamaChatMsg `json:"message"`
+				Done            bool          `json:"done"`
+				Error           string        `json:"error"`
+				EvalCount       int           `json:"eval_count"`
+				PromptEvalCount int           `json:"prompt_eval_count"`
+			}
+			if err2 := json.Unmarshal([]byte(line), &chunk); err2 != nil {
+				continue
+			}
+			if chunk.Error != "" {
+				if a.ctx != nil {
+					runtime.EventsEmit(a.ctx, "gemma:error", chatID, chunk.Error)
+				}
+				return
+			}
+			if chunk.Done {
+				if a.ctx != nil {
+					totalTokens := chunk.EvalCount + chunk.PromptEvalCount
+					if totalTokens > 0 {
+						runtime.EventsEmit(a.ctx, "gemma:usage", chatID, totalTokens)
+					}
+					runtime.EventsEmit(a.ctx, "gemma:done", chatID)
+				}
+				return
+			}
+			if chunk.Message.Thinking != "" && a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "gemma:thinking", chatID, chunk.Message.Thinking)
+			}
+			if chunk.Message.Content != "" && a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "gemma:chunk", chatID, chunk.Message.Content)
+			}
+		}
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "gemma:done", chatID)
+		}
+	}()
+}
+
+func (a *App) MemoryUsage() map[string]uint64 {
+	result := map[string]uint64{"used": 0, "total": 0}
+	if out, err := exec.Command("sysctl", "-n", "hw.memsize").Output(); err == nil {
+		var total uint64
+		if _, err2 := fmt.Sscan(strings.TrimSpace(string(out)), &total); err2 == nil {
+			result["total"] = total
+		}
+	}
+	if out, err := exec.Command("vm_stat").Output(); err == nil {
+		pageSize := uint64(16384)
+		pages := map[string]uint64{}
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, "page size of") {
+				fmt.Sscanf(line, "Mach Virtual Memory Statistics: (page size of %d bytes)", &pageSize)
+				continue
+			}
+			idx := strings.Index(line, ":")
+			if idx < 0 {
+				continue
+			}
+			key := strings.TrimSpace(line[:idx])
+			val := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line[idx+1:]), "."))
+			var n uint64
+			if _, err2 := fmt.Sscan(val, &n); err2 == nil {
+				pages[key] = n
+			}
+		}
+		available := (pages["Pages free"] + pages["Pages inactive"] + pages["Pages speculative"]) * pageSize
+		if result["total"] > 0 && available <= result["total"] {
+			result["used"] = result["total"] - available
+		}
+	}
 	return result
 }
 

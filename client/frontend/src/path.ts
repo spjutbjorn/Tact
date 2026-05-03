@@ -76,3 +76,10 @@ export function isZipArchivePath(path: string): boolean {
 export function isVirtualZipPath(path: string): boolean {
   return path.includes("::");
 }
+
+export function extname(path: string): string {
+  const base = basename(path);
+  const index = base.lastIndexOf(".");
+  if (index <= 0) return "";
+  return base.substring(index);
+}

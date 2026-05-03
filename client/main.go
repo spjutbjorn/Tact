@@ -17,7 +17,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "Tact",
+		Title:  "Tact beta",
 		Width:  1280,
 		Height: 800,
 		AssetServer: &assetserver.Options{

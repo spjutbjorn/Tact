@@ -18,6 +18,10 @@ export function DirSize(arg1) {
   return window['go']['main']['App']['DirSize'](arg1);
 }
 
+export function GemmaMemory() {
+  return window['go']['main']['App']['GemmaMemory']();
+}
+
 export function GetCwd() {
   return window['go']['main']['App']['GetCwd']();
 }
@@ -70,6 +74,14 @@ export function GitRevert(arg1) {
   return window['go']['main']['App']['GitRevert'](arg1);
 }
 
+export function GitRoot() {
+  return window['go']['main']['App']['GitRoot']();
+}
+
+export function GitShow(arg1, arg2) {
+  return window['go']['main']['App']['GitShow'](arg1, arg2);
+}
+
 export function GitStatus() {
   return window['go']['main']['App']['GitStatus']();
 }
@@ -94,8 +106,20 @@ export function ListDir(arg1) {
   return window['go']['main']['App']['ListDir'](arg1);
 }
 
+export function ListRecursiveFiles(arg1) {
+  return window['go']['main']['App']['ListRecursiveFiles'](arg1);
+}
+
 export function ListVolumes() {
   return window['go']['main']['App']['ListVolumes']();
+}
+
+export function MemoryUsage() {
+  return window['go']['main']['App']['MemoryUsage']();
+}
+
+export function MkDir(arg1) {
+  return window['go']['main']['App']['MkDir'](arg1);
 }
 
 export function MovePath(arg1, arg2) {
@@ -104,6 +128,14 @@ export function MovePath(arg1, arg2) {
 
 export function Navigate(arg1) {
   return window['go']['main']['App']['Navigate'](arg1);
+}
+
+export function OllamaChat(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['OllamaChat'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function PathIsDir(arg1) {
+  return window['go']['main']['App']['PathIsDir'](arg1);
 }
 
 export function Ping() {

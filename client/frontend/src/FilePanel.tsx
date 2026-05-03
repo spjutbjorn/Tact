@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DirSize, FileEntry, ListDir, ListVolumes, VolumeInfo, WriteTextFile, Rename } from "./wails";
+import { DirSize, FileEntry, ListDir, ListRecursiveFiles, ListVolumes, VolumeInfo, WriteTextFile, Rename, MkDir } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
+import { FileIcon, FolderIcon } from "./fileIcons";
 
 import { type FileHandlerSettings, DEFAULT_HIDDEN_NAMES } from "./fileHandlers";
 
@@ -10,6 +11,7 @@ type FileSide = "left" | "right";
 interface Props {
   side: FileSide;
   path: string;
+  peerPath?: string | null;
   selectedPath: string | null;
   active: boolean;
   dualMode: boolean;
@@ -40,22 +42,6 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function FolderIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="entry-icon">
-      <path d="M1.5 3A1.5 1.5 0 0 0 0 4.5v8A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H7.621a1.5 1.5 0 0 1-1.06-.44L5.439 2.94A1.5 1.5 0 0 0 4.38 2.5H1.5Z" />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="entry-icon">
-      <path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.414A2 2 0 0 0 13.414 3L11 .586A2 2 0 0 0 9.586 0H4Zm7 1.5v2a.5.5 0 0 0 .5.5h2L11 1.5Z" />
-    </svg>
-  );
-}
-
 function NewFileIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
@@ -69,6 +55,14 @@ function RenameIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor">
       <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z" />
+    </svg>
+  );
+}
+
+function NewFolderIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor">
+      <path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3.086a1.5 1.5 0 0 1 1.06.44l.914.914A1.5 1.5 0 0 0 9.06 4.3l.44-.44A1.5 1.5 0 0 1 10.56 3.5H13A1.5 1.5 0 0 1 14.5 5v6A1.5 1.5 0 0 1 13 12.5H3A1.5 1.5 0 0 1 1.5 11V4zm7 3.5a.5.5 0 0 0-1 0V9H6a.5.5 0 0 0 0 1h1.5v1.5a.5.5 0 0 0 1 0V10H10a.5.5 0 0 0 0-1H8.5V7.5z" />
     </svg>
   );
 }
@@ -202,6 +196,7 @@ interface TreeItemProps {
   isDir: boolean;
   size: number;
   depth: number;
+  peerSignatures: Set<string>;
   selectedPath: string | null;
   renamingPath: string | null;
   renameValue: string;
@@ -215,18 +210,20 @@ interface TreeItemProps {
   setRenameValue: (v: string) => void;
   submitRename: () => void;
   handleRenameKeyDown: (e: React.KeyboardEvent) => void;
+  startRenamePath: (p: string) => void;
 }
 
 function FileTreeItem({ 
-  path, name, isDir, size, depth, selectedPath, renamingPath, renameValue,
+  path, name, isDir, size, depth, peerSignatures, selectedPath, renamingPath, renameValue,
   showHidden, fileHandlerSettings,
-  onSelectFile, onNavigate, onCursorChange, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown
+  onSelectFile, onNavigate, onCursorChange, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown, startRenamePath
 }: TreeItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[]>([]);
   const fullPath = joinPath(path, name);
   const active = fullPath === selectedPath;
   const isRenaming = fullPath === renamingPath;
+  const shared = fileHandlerSettings.highlightSharedFiles && !isDir && !active && peerSignatures.has(`${name}::${size}`);
 
   useEffect(() => {
     if (expanded && isDir) {
@@ -276,7 +273,7 @@ function FileTreeItem({
           data-file-row="true"
           data-path={fullPath}
           data-is-dir={isDir ? "true" : "false"}
-          className={`file-panel__entry ${isDir ? "file-panel__entry--dir" : "file-panel__entry--file"}${active ? " file-panel__entry--active" : ""}`}
+          className={`file-panel__entry ${isDir ? "file-panel__entry--dir" : "file-panel__entry--file"}${active ? " file-panel__entry--active" : ""}${shared ? " file-panel__entry--shared" : ""}`}
           style={{ paddingLeft: `${depth * 12 + 12}px` }}
         >
           <button
@@ -284,6 +281,8 @@ function FileTreeItem({
             className="file-panel__entry-main"
             onMouseDown={(event) => {
               event.preventDefault();
+            }}
+            onClick={() => {
               handleClick();
             }}
           >
@@ -302,6 +301,20 @@ function FileTreeItem({
             <span>{name}</span>
           </button>
           <span className="file-panel__size">{isDir ? "" : formatFileSize(size)}</span>
+          <button
+            type="button"
+            className="file-panel__small-btn rename"
+            title={isDir ? "Rename folder" : "Rename file"}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              startRenamePath(fullPath);
+            }}
+          >
+            <RenameIcon />
+          </button>
           <button
             type="button"
             className="file-panel__small-btn delete"
@@ -341,6 +354,8 @@ function FileTreeItem({
               setRenameValue={setRenameValue}
               submitRename={submitRename}
               handleRenameKeyDown={handleRenameKeyDown}
+              startRenamePath={startRenamePath}
+              peerSignatures={peerSignatures}
             />
           ))}
         </ul>
@@ -352,6 +367,7 @@ function FileTreeItem({
 export default function FilePanel({
   side,
   path,
+  peerPath,
   selectedPath,
   active,
   dualMode,
@@ -369,13 +385,14 @@ export default function FilePanel({
   refreshToken,
 }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [isCreatingFile, setIsCreatingFile] = useState(false);
-  const [newFileName, setNewFileName] = useState("");
+  const [creatingKind, setCreatingKind] = useState<"file" | "folder" | null>(null);
+  const [newName, setNewName] = useState("");
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [folderSize, setFolderSize] = useState(0);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
+  const [peerSignatures, setPeerSignatures] = useState<Set<string>>(new Set());
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = () => {
@@ -387,10 +404,23 @@ export default function FilePanel({
   }, [path, refreshToken]);
 
   useEffect(() => {
-    if (path === "/") {
-      ListVolumes().then(setVolumes);
+    ListVolumes().then(setVolumes);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!dualMode || !peerPath) {
+      setPeerSignatures(new Set());
+      return;
     }
-  }, [path]);
+    ListRecursiveFiles(peerPath).then((res) => {
+      if (cancelled) return;
+      setPeerSignatures(new Set((res || []).map((entry) => `${basename(entry.name)}::${entry.size}`)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dualMode, peerPath, refreshToken]);
 
   useEffect(() => {
     if (!path) {
@@ -481,21 +511,24 @@ export default function FilePanel({
     if (fileHandlerSettings.hiddenNames.includes(e.name)) return false;
     return true;
   });
-
-  async function submitNewFile() {
-    if (!newFileName.trim()) {
-      setIsCreatingFile(false);
+  async function submitNewItem() {
+    if (!newName.trim()) {
+      setCreatingKind(null);
       return;
     }
-    const fullPath = joinPath(path, newFileName.trim());
-    const ok = await WriteTextFile(fullPath, "");
+    const fullPath = joinPath(path, newName.trim());
+    const ok = creatingKind === "folder"
+      ? await MkDir(fullPath)
+      : await WriteTextFile(fullPath, "");
     if (ok) {
       refresh();
-      onSelectFile(fullPath);
       onCursorChange(fullPath);
+      if (creatingKind !== "folder") {
+        onSelectFile(fullPath);
+      }
     }
-    setNewFileName("");
-    setIsCreatingFile(false);
+    setNewName("");
+    setCreatingKind(null);
   }
 
   async function submitRename() {
@@ -519,10 +552,10 @@ export default function FilePanel({
   }
 
   function handleNewFileKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") submitNewFile();
+    if (e.key === "Enter") submitNewItem();
     else if (e.key === "Escape") {
-      setIsCreatingFile(false);
-      setNewFileName("");
+      setCreatingKind(null);
+      setNewName("");
     }
   }
 
@@ -535,6 +568,12 @@ export default function FilePanel({
     if (!selectedPath) return;
     const name = basename(selectedPath);
     setRenamingPath(selectedPath);
+    setRenameValue(name);
+  }
+
+  function startRenamePath(pathToRename: string) {
+    const name = basename(pathToRename);
+    setRenamingPath(pathToRename);
     setRenameValue(name);
   }
 
@@ -661,27 +700,39 @@ export default function FilePanel({
           <button className="file-panel__new-btn" onClick={startRename} title="Rename Selected" disabled={!selectedPath}>
             <RenameIcon />
           </button>
-          <button className="file-panel__new-btn" onClick={() => setIsCreatingFile(true)} title="New File">
+          <button className="file-panel__new-btn" onClick={() => { setCreatingKind("folder"); setNewName(""); }} title="New Folder">
+            <NewFolderIcon />
+          </button>
+          <button className="file-panel__new-btn" onClick={() => { setCreatingKind("file"); setNewName(""); }} title="New File">
             <NewFileIcon />
           </button>
         </div>
       </div>
+      <div className="file-panel__volume-row">
+        <span className="file-panel__volume-label">Drive</span>
+        <VolumePicker
+          path={path}
+          volumes={volumes}
+          onNavigate={onNavigate}
+          onOpen={() => ListVolumes().then(setVolumes)}
+        />
+      </div>
       <ul className="file-panel__list">
-        {isCreatingFile && (
+        {creatingKind && (
           <li className="file-panel__new-input-container">
-            <FileIcon />
+            {creatingKind === "folder" ? <FolderIcon /> : <FileIcon />}
             <input
               autoFocus
               className="file-panel__new-input"
-              value={newFileName}
-              onChange={(e) => setNewFileName(e.target.value)}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
               onKeyDown={handleNewFileKeyDown}
-              onBlur={submitNewFile}
-              placeholder="filename..."
+              onBlur={submitNewItem}
+              placeholder={creatingKind === "folder" ? "folder name..." : "filename..."}
             />
           </li>
         )}
-        {path && path !== "/" ? (
+        {path && path !== "/" && (
           <li>
           <button
             data-file-row="true"
@@ -690,6 +741,8 @@ export default function FilePanel({
             className={`file-panel__entry file-panel__entry--dir${selectedPath === dirname(path) ? " file-panel__entry--active" : ""}`}
             onMouseDown={(event) => {
               event.preventDefault();
+            }}
+            onClick={() => {
               handleRowClick(dirname(path), true);
               onNavigate(dirname(path));
             }}
@@ -700,21 +753,6 @@ export default function FilePanel({
             </div>
             <span className="file-panel__size">{formatFileSize(folderSize)}</span>
           </button>
-          </li>
-        ) : (
-          <li className="file-panel__root-volume-row">
-            <div className="file-panel__entry file-panel__entry--dir">
-              <div className="file-panel__entry-left">
-                <FolderIcon />
-                <span>Choose volume</span>
-              </div>
-              <VolumePicker
-                path={path}
-                volumes={volumes}
-                onNavigate={onNavigate}
-                onOpen={() => ListVolumes().then(setVolumes)}
-              />
-            </div>
           </li>
         )}
         {filteredEntries.map((e) => (
@@ -738,6 +776,8 @@ export default function FilePanel({
             setRenameValue={setRenameValue}
             submitRename={submitRename}
             handleRenameKeyDown={handleRenameKeyDown}
+            startRenamePath={startRenamePath}
+            peerSignatures={peerSignatures}
           />
         ))}
       </ul>

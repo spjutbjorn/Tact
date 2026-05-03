@@ -47,6 +47,7 @@ interface WailsApp {
   RenameTerminalSession: (sessionID: string, name: string) => Promise<boolean>;
   Navigate: (path: string) => Promise<string>;
   ListDir: (path: string) => Promise<FileEntry[]>;
+  ListRecursiveFiles: (path: string) => Promise<FileEntry[]>;
   DirSize: (path: string) => Promise<number>;
   ListVolumes: () => Promise<VolumeInfo[]>;
   ReadTextFile: (path: string) => Promise<string>;
@@ -56,6 +57,7 @@ interface WailsApp {
   ReadBinaryFile: (path: string) => Promise<string>;
   PrepareVideoPath: (path: string) => Promise<string>;
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
+  PathIsDir: (path: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
   CopyPath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
   MovePath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
@@ -67,12 +69,18 @@ interface WailsApp {
   GitCommit: (message: string, amend: boolean) => Promise<boolean>;
   GitPush: () => Promise<boolean>;
   GitLog: () => Promise<string>;
+  GitRoot: () => Promise<string>;
   GitBranchName: () => Promise<string>;
   GitBranches: () => Promise<string[]>;
   GitCreateBranch: (name: string) => Promise<boolean>;
   GitCheckoutBranch: (name: string) => Promise<boolean>;
   GitRevert: (path: string) => Promise<boolean>;
   GitDiff: (path: string) => Promise<string>;
+  GitShow: (revision: string, path: string) => Promise<string>;
+  MkDir: (path: string) => Promise<boolean>;
+  MemoryUsage: () => Promise<Record<string, number>>;
+  OllamaChat: (chatId: string, messages: { role: string; content: string }[], contextFiles: string[], mode: string, currentPath: string, focusFiles: string[]) => Promise<void>;
+  GemmaMemory: () => Promise<{ used: number; total: number }>;
 }
 
 function app(): WailsApp | undefined {
@@ -122,6 +130,9 @@ export const Navigate = (path: string): Promise<string> =>
 export const ListDir = (path: string): Promise<FileEntry[]> =>
   app()?.ListDir(path) ?? Promise.resolve([]);
 
+export const ListRecursiveFiles = (path: string): Promise<FileEntry[]> =>
+  app()?.ListRecursiveFiles(path) ?? Promise.resolve([]);
+
 export const DirSize = (path: string): Promise<number> =>
   app()?.DirSize(path) ?? Promise.resolve(0);
 
@@ -148,6 +159,9 @@ export const PrepareVideoPath = (path: string): Promise<string> =>
 
 export const Rename = (oldPath: string, newPath: string): Promise<boolean> =>
   app()?.Rename(oldPath, newPath) ?? Promise.resolve(false);
+
+export const PathIsDir = (path: string): Promise<boolean> =>
+  app()?.PathIsDir(path) ?? Promise.resolve(false);
 
 export const DeleteFile = (path: string): Promise<boolean> =>
   app()?.DeleteFile(path) ?? Promise.resolve(false);
@@ -182,6 +196,9 @@ export const GitPush = (): Promise<boolean> =>
 export const GitLog = (): Promise<string> =>
   app()?.GitLog() ?? Promise.resolve("");
 
+export const GitRoot = (): Promise<string> =>
+  app()?.GitRoot() ?? Promise.resolve("");
+
 export const GitBranchName = (): Promise<string> =>
   app()?.GitBranchName() ?? Promise.resolve("");
 
@@ -199,6 +216,21 @@ export const GitRevert = (path: string): Promise<boolean> =>
 
 export const GitDiff = (path: string): Promise<string> =>
   app()?.GitDiff(path) ?? Promise.resolve("");
+
+export const GitShow = (revision: string, path: string): Promise<string> =>
+  app()?.GitShow(revision, path) ?? Promise.resolve("");
+
+export const MkDir = (path: string): Promise<boolean> =>
+  app()?.MkDir(path) ?? Promise.resolve(false);
+
+export const MemoryUsage = (): Promise<Record<string, number>> =>
+  app()?.MemoryUsage() ?? Promise.resolve({ used: 0, total: 0 });
+
+export const OllamaChat = (chatId: string, messages: { role: string; content: string }[], contextFiles: string[], mode: string, currentPath: string, focusFiles: string[]): Promise<void> =>
+  app()?.OllamaChat(chatId, messages, contextFiles, mode, currentPath, focusFiles) ?? Promise.resolve();
+
+export const GemmaMemory = (): Promise<{ used: number; total: number }> =>
+  app()?.GemmaMemory() ?? Promise.resolve({ used: 0, total: 0 });
 
 export const BrowserOpenURL = (url: string) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

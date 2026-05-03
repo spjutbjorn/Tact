@@ -3,12 +3,13 @@ import Breadcrumb from "./Breadcrumb";
 import { AppTitlebar, ContentToolbar } from "./AppChrome";
 import FilePanel from "./FilePanel";
 import FileViewer from "./FileViewer";
+import GemmaPanel from "./GemmaPanel";
 import GitPanel from "./GitPanel";
 import IconBar from "./IconBar";
 import TerminalPanel from "./TerminalPanel";
 import TerminalView from "./TerminalView";
 import Settings from "./Settings";
-import { CopyPath, DeleteFile, GetCwd, CloseTerminalSession, LaunchTerminalProfileAt, MovePath, Navigate, ResizeTerminalSession, SendTerminalInput, TerminalProfileUsage, TerminalProfiles, TerminalSessions, type TerminalProfile, type TerminalSession } from "./wails";
+import { CopyPath, DeleteFile, GetCwd, CloseTerminalSession, GitRoot, LaunchTerminalProfileAt, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput, TerminalProfileUsage, TerminalProfiles, TerminalSessions, type TerminalProfile, type TerminalSession } from "./wails";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, isMarkdownPath } from "./path";
 import { terminalOutputStore } from "./terminalOutputStore";
@@ -79,6 +80,7 @@ export default function App() {
   const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
   const [mediaFullscreen, setMediaFullscreen] = useState(false);
+  const [gitRoot, setGitRoot] = useState("");
 
   useEffect(() => {
     GetCwd().then((cwd) => {
@@ -86,6 +88,7 @@ export default function App() {
       setLeftPath(cwd);
       setRightPath(cwd);
     });
+    GitRoot().then(setGitRoot);
   }, []);
 
   const handleSelectTerminalSession = (sessionID: string) => {
@@ -344,20 +347,22 @@ export default function App() {
 
   const getSelectionForSide = (side: FileSide) =>
     side === "left"
-      ? leftCursorPath ?? (activeFileSide === "left" ? selectedFile : null)
-      : rightCursorPath ?? (activeFileSide === "right" ? selectedFile : null);
+      ? leftCursorPath ?? (activeFileSide === "left" ? selectedFile : null) ?? (leftPath && leftPath !== "/" ? leftPath : null)
+      : rightCursorPath ?? (activeFileSide === "right" ? selectedFile : null) ?? (rightPath && rightPath !== "/" ? rightPath : null);
 
   const getDestinationForSide = (side: FileSide) => (side === "left" ? rightPath : leftPath);
 
-  const afterTransfer = (destinationSide: FileSide, targetPath: string) => {
-    setSelectedFile(targetPath);
-    setIsDirty(false);
-    setActiveFileSide(destinationSide);
-    if (destinationSide === "left") {
-      setLeftCursorPath(targetPath);
-    } else {
-      setRightCursorPath(targetPath);
+  const afterTransfer = (destinationSide: FileSide, targetPath: string, sourceIsDir: boolean) => {
+    if (!sourceIsDir) {
+      setSelectedFile(targetPath);
+      setActiveFileSide(destinationSide);
+      if (destinationSide === "left") {
+        setLeftCursorPath(targetPath);
+      } else {
+        setRightCursorPath(targetPath);
+      }
     }
+    setIsDirty(false);
     setFileListRefreshToken((value) => value + 1);
   };
 
@@ -368,9 +373,10 @@ export default function App() {
 
     setTransferState({ kind: "copy" });
     try {
+      const sourceIsDir = await PathIsDir(sourcePath);
       const ok = await CopyPath(sourcePath, destinationPath);
       if (ok) {
-        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`);
+        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
       } else {
         alert("Copy failed");
       }
@@ -386,9 +392,10 @@ export default function App() {
 
     setTransferState({ kind: "move" });
     try {
+      const sourceIsDir = await PathIsDir(sourcePath);
       const ok = await MovePath(sourcePath, destinationPath);
       if (ok) {
-        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`);
+        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
         syncDeletedSelection(sourcePath);
       } else {
         alert("Move failed");
@@ -458,6 +465,7 @@ export default function App() {
   const showSettings = activePanel === "settings";
   const showFiles = activePanel === "files";
   const showGit = activePanel === "git";
+  const showGemma = activePanel === "gemma";
   const showTerminals = activePanel === "terminals";
   const showDualFiles = showFiles && dualFiles;
   const activePath = activeFileSide === "left" ? leftPath : rightPath;
@@ -465,7 +473,7 @@ export default function App() {
   const isMedia = selectedFile ? /\.(png|jpe?g|gif|webp|svg|bmp|ico|tif|tiff|avif|mp4|m4v|webm|mov|avi|mkv|ogv)$/i.test(selectedFile) : false;
   const showPanels = !mediaFullscreen;
   const activeTerminalSession = terminalSessions.find((session) => session.id === activeTerminalSessionId) ?? terminalSessions[0] ?? null;
-  const titleLabel = showTerminals ? activeTerminalSession?.name ?? "Terminals" : selectedFile ? basename(selectedFile) : "Tact";
+  const titleLabel = showTerminals ? activeTerminalSession?.name ?? "Terminals" : selectedFile ? basename(selectedFile) : "Tact beta";
 
   return (
     <div className="layout">
@@ -476,6 +484,7 @@ export default function App() {
           <FilePanel
             side="left"
             path={leftPath || path}
+            peerPath={dualFiles ? (rightPath || path) : null}
             selectedPath={leftCursorPath}
             active={activeFileSide === "left"}
             dualMode={showDualFiles}
@@ -506,14 +515,14 @@ export default function App() {
           />
         )}
         <main className="content">
-          {!showTerminals && (
+          {(!showTerminals || showGit) && (
             <ContentToolbar
-              hasSelection={Boolean(selectedFile)}
-              isMarkdown={isMd}
-              isMedia={isMedia}
+              hasSelection={Boolean(selectedFile) && !showGit}
+              isMarkdown={isMd && !showGit}
+              isMedia={isMedia && !showGit}
               mediaFullscreen={mediaFullscreen}
               previewMode={previewMode}
-              isDirty={isDirty}
+              isDirty={isDirty && !showGit}
               onTogglePreview={() => setPreviewMode(!previewMode)}
               onSave={handleSave}
               onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
@@ -535,8 +544,16 @@ export default function App() {
               activityBySessionId={terminalActivityBySessionId}
               sidebarOpen={terminalSidebarOpen}
             />
+          ) : showGemma ? (
+            <GemmaPanel
+              path={activePath || path}
+              width={panelWidth}
+              onNavigate={(target) => {
+                void handleNavigate(target);
+              }}
+            />
           ) : showGit ? (
-            <GitPanel />
+            <GitPanel initialFile={selectedFile} gitRoot={gitRoot} onSelectFile={handleSelectFile} />
           ) : selectedFile ? (
             <FileViewer 
               key={selectedFile} 
@@ -579,6 +596,7 @@ export default function App() {
           <FilePanel
             side="right"
             path={rightPath || path}
+            peerPath={dualFiles ? (leftPath || path) : null}
             selectedPath={rightCursorPath}
             active={activeFileSide === "right"}
             dualMode={showDualFiles}
