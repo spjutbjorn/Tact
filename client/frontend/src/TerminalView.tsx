@@ -45,19 +45,31 @@ export default function TerminalView({ session, activityBySessionId, sidebarOpen
 
     const entry = terminalRegistry.getOrCreate(session.id);
     host.appendChild(entry.container);
-    entry.fitAddon.fit();
-    // Backend defers PTY spawn until first ResizeTerminalSession; xterm's
-    // onResize fires only when dims actually change, so push the current dims
-    // explicitly to guarantee the spawn kicks off.
-    void ResizeTerminalSession(session.id, entry.terminal.cols, entry.terminal.rows);
+
+    const doFit = () => {
+      requestAnimationFrame(() => {
+        entry.fitAddon.fit();
+        // Backend defers PTY spawn until first ResizeTerminalSession; xterm's
+        // onResize fires only when dims actually change, so push the current dims
+        // explicitly to guarantee the spawn kicks off.
+        void ResizeTerminalSession(session.id, entry.terminal.cols, entry.terminal.rows);
+      });
+    };
+
+    // Initial fit
+    doFit();
+    // Second fit after a small delay to handle layout settling
+    const timer = setTimeout(doFit, 100);
+
     entry.terminal.focus();
 
     const observer = new ResizeObserver(() => {
-      entry.fitAddon.fit();
+      doFit();
     });
     observer.observe(host);
 
     return () => {
+      clearTimeout(timer);
       observer.disconnect();
       if (entry.container.parentElement === host) {
         host.removeChild(entry.container);
@@ -68,7 +80,9 @@ export default function TerminalView({ session, activityBySessionId, sidebarOpen
   useEffect(() => {
     if (!session) return;
     const entry = terminalRegistry.getOrCreate(session.id);
-    entry.fitAddon.fit();
+    requestAnimationFrame(() => {
+      entry.fitAddon.fit();
+    });
   }, [sidebarOpen, session?.id]);
 
   return (

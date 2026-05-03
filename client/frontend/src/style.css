@@ -1200,6 +1200,13 @@ body {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 32%),
+    linear-gradient(180deg, #101010 0%, #0d0d0d 100%);
+}
+
+.editor__preview--markdown {
+  padding: 1.5rem 1.25rem 2rem;
 }
 
 /* ── File entries: make non-dir files hoverable ── */
@@ -1217,35 +1224,88 @@ body {
 /* ── Markdown viewer ── */
 
 .md-viewer {
-  padding: 2.5rem 3rem;
-  max-width: 780px;
+  padding: 2rem 2.25rem 2.5rem;
+  max-width: 860px;
   width: 100%;
   margin: 0 auto;
   line-height: 1.75;
-  font-size: 0.9rem;
-  color: #c8c8c8;
+  font-size: 0.96rem;
+  color: #dbe5ee;
+  background:
+    linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(11, 16, 28, 0.96));
+  border: 1px solid #223045;
+  border-radius: 18px;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.md-viewer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(125, 211, 252, 0.05), transparent 20%, transparent 80%, rgba(96, 165, 250, 0.03));
+  pointer-events: none;
+}
+
+.md-viewer > * {
+  position: relative;
+  z-index: 1;
+}
+
+.md-viewer__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #243145;
+}
+
+.md-viewer__title {
+  color: #f3f8ff;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .md-viewer h1,
 .md-viewer h2,
 .md-viewer h3,
 .md-viewer h4 {
-  color: #e8e8e8;
+  color: #f3f8ff;
   font-weight: 600;
   margin: 2rem 0 0.6rem;
   line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 
-.md-viewer h1 { font-size: 1.6rem; }
-.md-viewer h2 { font-size: 1.25rem; border-bottom: 1px solid #222; padding-bottom: 0.3rem; }
-.md-viewer h3 { font-size: 1.05rem; }
+.md-viewer h1 {
+  font-size: 1.95rem;
+  margin-top: 1.25rem;
+}
+
+.md-viewer h2 {
+  font-size: 1.4rem;
+  border-bottom: 1px solid #263449;
+  padding-bottom: 0.35rem;
+}
+
+.md-viewer h3 { font-size: 1.1rem; }
 
 .md-viewer p {
-  margin: 0.75rem 0;
+  margin: 0.85rem 0;
+  color: #d6e2ee;
 }
 
 .md-viewer a {
-  color: #6a8fce;
+  color: #7dd3fc;
   text-decoration: none;
 }
 
@@ -1254,22 +1314,23 @@ body {
 }
 
 .md-viewer code {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  padding: 0.1em 0.35em;
-  border-radius: 0;
+  background: rgba(125, 211, 252, 0.08);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  padding: 0.12em 0.4em;
+  border-radius: 999px;
   font-family: ui-monospace, "SF Mono", monospace;
   font-size: 0.82em;
-  color: #e0e0e0;
+  color: #f4fbff;
 }
 
 .md-viewer pre {
-  background: #111;
-  border: 1px solid #222;
-  border-radius: 0;
-  padding: 1rem 1.25rem;
+  background: linear-gradient(180deg, #0c1623, #0a111b);
+  border: 1px solid #233348;
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
   overflow-x: auto;
-  margin: 1rem 0;
+  margin: 1.1rem 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .md-viewer pre code {
@@ -1277,13 +1338,16 @@ body {
   border: none;
   padding: 0;
   font-size: 0.85em;
+  border-radius: 0;
 }
 
 .md-viewer blockquote {
-  border-left: 3px solid #333;
+  border-left: 3px solid #7dd3fc;
   margin: 1rem 0;
-  padding: 0 1rem;
-  color: #888;
+  padding: 0.15rem 1rem;
+  color: #bfd0e1;
+  background: rgba(125, 211, 252, 0.08);
+  border-radius: 0 12px 12px 0;
 }
 
 .md-viewer ul,
@@ -1296,23 +1360,56 @@ body {
   margin: 0.25rem 0;
 }
 
+.md-viewer li::marker {
+  color: #7dd3fc;
+}
+
 .md-viewer table {
   border-collapse: collapse;
   width: 100%;
   margin: 1rem 0;
   font-size: 0.85em;
+  overflow: hidden;
+  border-radius: 12px;
+  display: block;
+  overflow-x: auto;
 }
 
 .md-viewer th,
 .md-viewer td {
-  border: 1px solid #222;
-  padding: 0.4rem 0.75rem;
+  border: 1px solid #263449;
+  padding: 0.5rem 0.8rem;
   text-align: left;
 }
 
 .md-viewer th {
-  background: #141414;
-  color: #e8e8e8;
+  background: #111c2b;
+  color: #f3f8ff;
+}
+
+.md-viewer tr:nth-child(even) td {
+  background: rgba(125, 211, 252, 0.03);
+}
+
+.md-viewer hr {
+  border: none;
+  height: 1px;
+  margin: 1.4rem 0;
+  background: linear-gradient(90deg, transparent, #37506c, transparent);
+}
+
+.md-viewer img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1rem auto;
+  border-radius: 14px;
+  border: 1px solid #263449;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.28);
+}
+
+.md-viewer :is(h1, h2, h3, h4, p, ul, ol, blockquote, pre, table, hr, img) {
+  position: relative;
 }
 
 /* ── JSON Highlighter ── */

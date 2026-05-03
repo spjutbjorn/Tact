@@ -595,8 +595,11 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
   return (
     <div className="editor">
       {md && previewMode ? (
-        <div className="editor__preview">
+        <div className="editor__preview editor__preview--markdown">
           <article className="md-viewer">
+            <header className="md-viewer__header">
+              <span className="md-viewer__title">{basename(path)}</span>
+            </header>
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
               components={{
