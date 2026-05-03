@@ -1,3 +1,7 @@
 .vscode
 .idea
 /client/build
+/client/client
+/client/frontend/dist
+/client/frontend/node_modules
+*.DS_Store
