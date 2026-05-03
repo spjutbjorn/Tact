@@ -41,6 +41,10 @@ export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
 
+export function isJsonPath(path: string): boolean {
+  return /\.(json|jsonc|jsonl|ndjson)$/i.test(path);
+}
+
 export function isPdfPath(path: string): boolean {
   return /\.pdf$/i.test(path);
 }

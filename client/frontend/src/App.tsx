@@ -13,6 +13,7 @@ import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, isMarkdownPath } from "./path";
 import { terminalOutputStore } from "./terminalOutputStore";
 import { terminalRegistry } from "./terminalRegistry";
+import { type FileHandlerSettings, loadFileHandlerSettings, saveFileHandlerSettings } from "./fileHandlers";
 
 terminalRegistry.setHandlers(
   (sessionId, data) => {
@@ -24,6 +25,7 @@ terminalRegistry.setHandlers(
 );
 
 const PANEL_WIDTH_KEY = "tact.panelWidth";
+const DISABLED_PROFILES_KEY = "tact.disabledProfiles";
 const DEFAULT_PANEL_WIDTH = 220;
 type FileSide = "left" | "right";
 
@@ -32,6 +34,17 @@ function loadPanelWidth(): number {
   if (!saved) return DEFAULT_PANEL_WIDTH;
   const n = parseInt(saved, 10);
   return Number.isFinite(n) ? Math.max(120, Math.min(600, n)) : DEFAULT_PANEL_WIDTH;
+}
+
+function loadDisabledProfiles(): string[] {
+  const saved = localStorage.getItem(DISABLED_PROFILES_KEY);
+  if (!saved) return [];
+  try {
+    const ids = JSON.parse(saved);
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];
+  }
 }
 
 function pickActiveSessionId(current: string | null, sessions: TerminalSession[]): string | null {
@@ -54,6 +67,8 @@ export default function App() {
   const [leftCursorPath, setLeftCursorPath] = useState<string | null>(null);
   const [rightCursorPath, setRightCursorPath] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
+  const [fileHandlerSettings, setFileHandlerSettings] = useState<FileHandlerSettings>(loadFileHandlerSettings);
+  const [disabledProfileIds, setDisabledProfileIds] = useState<string[]>(loadDisabledProfiles);
   const [isDirty, setIsDirty] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
   const [terminalProfiles, setTerminalProfiles] = useState<TerminalProfile[]>([]);
@@ -133,9 +148,28 @@ export default function App() {
     localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth));
   }, [panelWidth]);
 
+  useEffect(() => {
+    localStorage.setItem(DISABLED_PROFILES_KEY, JSON.stringify(disabledProfileIds));
+  }, [disabledProfileIds]);
+
+  useEffect(() => {
+    saveFileHandlerSettings(fileHandlerSettings);
+  }, [fileHandlerSettings]);
+
   async function refreshTerminalUsage(profileId: string) {
     await TerminalProfileUsage(profileId);
   }
+
+  function toggleProfileDisabled(id: string) {
+    setDisabledProfileIds((current) => {
+      if (current.includes(id)) {
+        return current.filter((i) => i !== id);
+      }
+      return [...current, id];
+    });
+  }
+
+
 
   function syncDeletedSelection(target: string) {
     setSelectedFile((current) => {
@@ -447,6 +481,7 @@ export default function App() {
             dualMode={showDualFiles}
             isMirror={leftMirrorsRight && showDualFiles}
             width={panelWidth}
+            fileHandlerSettings={fileHandlerSettings}
             onWidthChange={setPanelWidth}
             onNavigate={(target) => {
               void handlePanelNavigate("left", target);
@@ -485,7 +520,15 @@ export default function App() {
             />
           )}
           {showSettings ? (
-            <Settings panelWidth={panelWidth} onPanelWidthChange={setPanelWidth} />
+            <Settings 
+              panelWidth={panelWidth} 
+              onPanelWidthChange={setPanelWidth} 
+              fileHandlerSettings={fileHandlerSettings}
+              onFileHandlerSettingsChange={setFileHandlerSettings}
+              terminalProfiles={terminalProfiles}
+              disabledProfileIds={disabledProfileIds}
+              onToggleProfileDisabled={toggleProfileDisabled}
+            />
           ) : showTerminals ? (
             <TerminalView
               session={activeTerminalSession}
@@ -504,16 +547,19 @@ export default function App() {
               onDirtyChange={setIsDirty}
               isFullscreen={mediaFullscreen}
               onToggleFullscreen={() => setMediaFullscreen((current) => !current)}
+              fileHandlerSettings={fileHandlerSettings}
             />
           ) : (
             <span className="content__empty">Select a file to preview</span>
           )}
+
         </main>
         {showTerminals && terminalSidebarOpen && showPanels && (
           <TerminalPanel
             width={panelWidth}
-            profiles={terminalProfiles}
+            profiles={terminalProfiles.filter(p => !disabledProfileIds.includes(p.id))}
             sessions={terminalSessions}
+
             activeSessionId={activeTerminalSessionId}
             activityBySessionId={terminalActivityBySessionId}
             launchDir={activePath || path || ""}
@@ -538,6 +584,7 @@ export default function App() {
             dualMode={showDualFiles}
             isMirror={false}
             width={panelWidth}
+            fileHandlerSettings={fileHandlerSettings}
             onWidthChange={setPanelWidth}
             onNavigate={(target) => {
               void handlePanelNavigate("right", target);

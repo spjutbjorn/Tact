@@ -3,51 +3,8 @@ import { renderAsync } from "docx-preview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir } from "./wails";
-import { basename, dirname, isDocxPath, isEpubPath, isLicensePath, isMarkdownPath, isPdfPath, isRtfPath, isTextLikePath, joinPath } from "./path";
-
-const VIDEO_MIME: Record<string, string> = {
-  mp4: "video/mp4", m4v: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  mkv: "video/x-matroska",
-  ogv: "video/ogg",
-};
-
-const AUDIO_MIME: Record<string, string> = {
-  mp3: "audio/mpeg",
-  m4a: "audio/mp4",
-  wav: "audio/wav",
-  ogg: "audio/ogg",
-  oga: "audio/ogg",
-  flac: "audio/flac",
-  aac: "audio/aac",
-  amr: "audio/amr",
-};
-
-function videoMime(path: string): string | null {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return VIDEO_MIME[ext] ?? null;
-}
-
-function audioMime(path: string): string | null {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return AUDIO_MIME[ext] ?? null;
-}
-
-const IMAGE_MIME: Record<string, string> = {
-  jpg: "image/jpeg", jpeg: "image/jpeg",
-  png: "image/png", gif: "image/gif",
-  webp: "image/webp", svg: "image/svg+xml",
-  bmp: "image/bmp", ico: "image/x-icon",
-  tif: "image/tiff", tiff: "image/tiff",
-  avif: "image/avif",
-};
-
-function imageMime(path: string): string | null {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return IMAGE_MIME[ext] ?? null;
-}
+import { basename, dirname, isMarkdownPath, isJsonPath, joinPath } from "./path";
+import { type FileHandlerSettings, getFileHandler, imageMime, videoMime, audioMime } from "./fileHandlers";
 
 function mediaMime(path: string): string | null {
   return imageMime(path) ?? videoMime(path) ?? audioMime(path);
@@ -258,10 +215,74 @@ function ImageViewer({
 }) {
   const src = useBinaryObjectUrl(path, mime);
   const frameRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   const { onKeyDown } = useMediaNavigation(path, onSelectFile);
   useFullscreenKeys(isFullscreen, onToggleFullscreen, onSelectFile, path, frameRef);
 
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || Math.abs(e.deltaY) < 50) {
+        e.preventDefault();
+        const delta = -e.deltaY;
+        const factor = Math.pow(1.1, delta / 100);
+        const nextZoom = Math.min(Math.max(0.1, zoom * factor), 10);
+        
+        if (nextZoom !== zoom) {
+          // Zoom towards cursor
+          const rect = frame.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+          
+          const zoomPointX = (mouseX - rect.width / 2 - offset.x) / zoom;
+          const zoomPointY = (mouseY - rect.height / 2 - offset.y) / zoom;
+          
+          const nextOffsetX = mouseX - rect.width / 2 - zoomPointX * nextZoom;
+          const nextOffsetY = mouseY - rect.height / 2 - zoomPointY * nextZoom;
+          
+          setZoom(nextZoom);
+          setOffset({ x: nextOffsetX, y: nextOffsetY });
+        }
+      }
+    };
+
+    frame.addEventListener("wheel", handleWheel, { passive: false });
+    return () => frame.removeEventListener("wheel", handleWheel);
+  }, [zoom, offset]);
+
+  useEffect(() => {
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  }, [path]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom > 1 || e.button === 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+      e.preventDefault();
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) {
+      setOffset({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   if (!src) return <div className="viewer-loading">Loading…</div>;
+
   return (
     <div
       ref={frameRef}
@@ -269,9 +290,26 @@ function ImageViewer({
       tabIndex={0}
       onMouseDownCapture={() => frameRef.current?.focus()}
       onKeyDown={isFullscreen ? undefined : onKeyDown}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{ cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
     >
-      <div className="media-viewer__surface">
-        <img src={src} alt={basename(path)} className="image-viewer__img" />
+      <div 
+        className="media-viewer__surface"
+        style={{
+          transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+          transition: isDragging ? "none" : "transform 0.1s ease-out"
+        }}
+      >
+        <img 
+          ref={imgRef}
+          src={src} 
+          alt={basename(path)} 
+          className="image-viewer__img" 
+          draggable={false}
+        />
       </div>
     </div>
   );
@@ -355,6 +393,46 @@ function DocxViewer({ path }: { path: string }) {
   );
 }
 
+function JsonHighlighter({ content }: { content: string }) {
+  const [formatted, setFormatted] = useState("");
+
+  useEffect(() => {
+    try {
+      const obj = JSON.parse(content);
+      const json = JSON.stringify(obj, null, 2);
+      
+      const highlighted = json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        (match) => {
+          let cls = "json-val--num";
+          if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+              cls = "json-key";
+            } else {
+              cls = "json-val--str";
+            }
+          } else if (/true|false/.test(match)) {
+            cls = "json-val--bool";
+          } else if (/null/.test(match)) {
+            cls = "json-val--null";
+          }
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+      setFormatted(highlighted);
+    } catch {
+      setFormatted(content);
+    }
+  }, [content]);
+
+  return (
+    <pre 
+      className="json-highlighter"
+      dangerouslySetInnerHTML={{ __html: formatted }}
+    />
+  );
+}
+
 function NoSupportViewer({ path }: { path: string }) {
   return (
     <div className="viewer-loading viewer-loading--unsupported">
@@ -429,6 +507,7 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
   const [content, setContent] = useState("");
   const [saved, setSaved] = useState("");
   const md = isMarkdownPath(path);
+  const json = isJsonPath(path);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -504,6 +583,10 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
             </ReactMarkdown>
           </article>
         </div>
+      ) : json && previewMode ? (
+        <div className="editor__preview">
+          <JsonHighlighter content={content} />
+        </div>
       ) : (
         <textarea
           ref={textareaRef}
@@ -519,24 +602,23 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
   );
 }
 
-export default function FileViewer({ path, onSelectFile, onExitToFolderView, previewMode, onDirtyChange, isFullscreen, onToggleFullscreen }: { 
-  path: string; 
+export default function FileViewer({ path, onSelectFile, onExitToFolderView, previewMode, onDirtyChange, isFullscreen, onToggleFullscreen, fileHandlerSettings }: {
+  path: string;
   onSelectFile?: (p: string) => void;
   onExitToFolderView: () => void;
   previewMode: boolean;
   onDirtyChange: (d: boolean) => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  fileHandlerSettings: FileHandlerSettings;
 }) {
-  if (isPdfPath(path)) return <PdfViewer path={path} />;
-  if (isDocxPath(path)) return <DocxViewer path={path} />;
-  if (isEpubPath(path) || isRtfPath(path)) return <HtmlDocumentViewer path={path} />;
-  const imgMime = imageMime(path);
-  if (imgMime) return <ImageViewer path={path} mime={imgMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
-  const vidMime = videoMime(path);
-  if (vidMime) return <VideoViewer path={path} mime={vidMime} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
-  const audMime = audioMime(path);
-  if (audMime) return <AudioViewer path={path} mime={audMime} />;
-  if (isLicensePath(path) || isMarkdownPath(path) || isTextLikePath(path)) return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
+  const handler = getFileHandler(path, fileHandlerSettings);
+  if (handler.type === "pdf") return <PdfViewer path={path} />;
+  if (handler.type === "docx") return <DocxViewer path={path} />;
+  if (handler.type === "html-doc") return <HtmlDocumentViewer path={path} />;
+  if (handler.type === "image") return <ImageViewer path={path} mime={handler.mime ?? imageMime(path) ?? ""} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
+  if (handler.type === "video") return <VideoViewer path={path} mime={handler.mime ?? videoMime(path) ?? ""} onSelectFile={onSelectFile} isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />;
+  if (handler.type === "audio") return <AudioViewer path={path} mime={handler.mime ?? audioMime(path) ?? ""} />;
+  if (handler.type === "text") return <TextEditor path={path} onSelectFile={onSelectFile} onExitToFolderView={onExitToFolderView} previewMode={previewMode} onDirtyChange={onDirtyChange} />;
   return <NoSupportViewer path={path} />;
 }

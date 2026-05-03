@@ -1280,6 +1280,42 @@ body {
   color: #e8e8e8;
 }
 
+/* ── JSON Highlighter ── */
+
+.json-highlighter {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #d1d1d1;
+  padding: 1.5rem;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #000;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.json-key {
+  color: #9cdcfe; /* Light blue */
+}
+
+.json-val--str {
+  color: #ce9178; /* Orange/Brown */
+}
+
+.json-val--num {
+  color: #b5cea8; /* Light green */
+}
+
+.json-val--bool {
+  color: #569cd6; /* Blue */
+}
+
+.json-val--null {
+  color: #569cd6; /* Blue */
+}
+
 /* ── DOCX viewer ── */
 
 .docx-viewer {
@@ -1423,13 +1459,19 @@ body {
 
 .image-viewer {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   background: #0a0a0a;
   text-align: center;
 }
 
 .image-viewer .media-viewer__surface {
-  padding: 2rem;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
 }
 
 .image-viewer.media-viewer--fullscreen .media-viewer__surface {
@@ -1445,9 +1487,10 @@ body {
 }
 
 .image-viewer__img {
-  max-width: 100%;
-  height: auto;
-  display: inline-block;
+  max-width: 95%;
+  max-height: 95%;
+  object-fit: contain;
+  display: block;
   border-radius: 0;
   box-shadow: none;
 }
@@ -2097,6 +2140,224 @@ body {
   color: #555;
   min-width: 42px;
   text-align: right;
+}
+
+.settings__description {
+  font-size: 0.78rem;
+  color: #555;
+  margin-bottom: 0.85rem;
+  line-height: 1.5;
+}
+
+.settings__profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings__profiles-empty {
+  font-size: 0.78rem;
+  color: #555;
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+.settings__profile-row {
+  border: 1px solid #1a1a1a;
+  background: #090909;
+}
+
+.settings__profile-row:hover {
+  border-color: #2a2a2a;
+}
+
+.settings__profile-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.settings__checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #6a8fce;
+}
+
+.settings__profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.settings__profile-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #ccc;
+}
+
+.settings__profile-model {
+  font-size: 0.68rem;
+  color: #666;
+}
+
+/* Extension settings */
+
+.settings__ext-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.settings__ext-filter {
+  flex: 1;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  outline: none;
+}
+
+.settings__ext-filter:focus {
+  border-color: #444;
+}
+
+.settings__ext-reset {
+  background: none;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #555;
+  font-size: 0.72rem;
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.settings__ext-reset:hover {
+  border-color: #444;
+  color: #888;
+}
+
+.settings__ext-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.settings__ext-empty {
+  font-size: 0.75rem;
+  color: #333;
+}
+
+.settings__ext-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.45rem;
+}
+
+.settings__ext-tag--default {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.settings__ext-tag--data {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.3);
+  color: #facc15;
+}
+
+.settings__ext-tag--code {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
+
+.settings__ext-tag--web {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #d8b4fe;
+}
+
+.settings__ext-tag--doc {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.settings__ext-remove {
+  background: none;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  transition: color 0.1s;
+}
+
+.settings__ext-remove:hover {
+  color: #c06060;
+}
+
+.settings__ext-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #1a1a1a;
+}
+
+.settings__ext-input {
+  flex: 1;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 6px;
+  color: #ccc;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  outline: none;
+}
+
+.settings__ext-input:focus {
+  border-color: #444;
+}
+
+.settings__ext-add-btn {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #888;
+  font-size: 0.72rem;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.settings__ext-add-btn:hover:not(:disabled) {
+  background: #222;
+  color: #ccc;
+}
+
+.settings__ext-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── Git Panel ── */

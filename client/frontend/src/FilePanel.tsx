@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { DirSize, FileEntry, ListDir, ListVolumes, VolumeInfo, WriteTextFile, Rename } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 
+import { type FileHandlerSettings, DEFAULT_HIDDEN_NAMES } from "./fileHandlers";
+
 type FileSide = "left" | "right";
 
 interface Props {
@@ -13,6 +15,7 @@ interface Props {
   dualMode: boolean;
   isMirror: boolean;
   width: number;
+  fileHandlerSettings: FileHandlerSettings;
   onWidthChange: (w: number) => void;
   onNavigate: (path: string) => void;
   onSelectFile: (path: string) => void;
@@ -202,6 +205,8 @@ interface TreeItemProps {
   selectedPath: string | null;
   renamingPath: string | null;
   renameValue: string;
+  showHidden: boolean;
+  fileHandlerSettings: FileHandlerSettings;
   onSelectFile: (p: string) => void;
   onNavigate: (p: string) => void;
   onCursorChange: (p: string) => void;
@@ -214,6 +219,7 @@ interface TreeItemProps {
 
 function FileTreeItem({ 
   path, name, isDir, size, depth, selectedPath, renamingPath, renameValue,
+  showHidden, fileHandlerSettings,
   onSelectFile, onNavigate, onCursorChange, onDelete, setRenamingPath, setRenameValue, submitRename, handleRenameKeyDown
 }: TreeItemProps) {
   const [expanded, setExpanded] = useState(false);
@@ -243,6 +249,13 @@ function FileTreeItem({
       onSelectFile(fullPath);
     }
   };
+
+  const filteredChildren = children.filter(e => {
+    if (showHidden) return true;
+    if (e.name.startsWith(".")) return false;
+    if (fileHandlerSettings.hiddenNames.includes(e.name)) return false;
+    return true;
+  });
 
   return (
     <li>
@@ -307,7 +320,7 @@ function FileTreeItem({
       )}
       {expanded && isDir && (
         <ul className="file-panel__list">
-          {children.map((child) => (
+          {filteredChildren.map((child) => (
             <FileTreeItem
               key={child.name}
               path={fullPath}
@@ -318,6 +331,8 @@ function FileTreeItem({
               selectedPath={selectedPath}
               renamingPath={renamingPath}
               renameValue={renameValue}
+              showHidden={showHidden}
+              fileHandlerSettings={fileHandlerSettings}
               onSelectFile={onSelectFile}
               onNavigate={onNavigate}
               onCursorChange={onCursorChange}
@@ -342,6 +357,7 @@ export default function FilePanel({
   dualMode,
   isMirror,
   width,
+  fileHandlerSettings,
   onWidthChange,
   onNavigate,
   onSelectFile,
@@ -459,7 +475,12 @@ export default function FilePanel({
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
   }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange, selectedPath, onNavigate, onSelectFile]);
 
-  const filteredEntries = entries.filter(e => showHidden || !e.name.startsWith("."));
+  const filteredEntries = entries.filter(e => {
+    if (showHidden) return true;
+    if (e.name.startsWith(".")) return false;
+    if (fileHandlerSettings.hiddenNames.includes(e.name)) return false;
+    return true;
+  });
 
   async function submitNewFile() {
     if (!newFileName.trim()) {
@@ -707,6 +728,8 @@ export default function FilePanel({
             selectedPath={selectedPath}
             renamingPath={renamingPath}
             renameValue={renameValue}
+            showHidden={showHidden}
+            fileHandlerSettings={fileHandlerSettings}
             onSelectFile={onSelectFile}
             onNavigate={onNavigate}
             onCursorChange={onCursorChange}
