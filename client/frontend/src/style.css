@@ -551,6 +551,62 @@
   min-height: 320px;
 }
 
+.terminal-view__park {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.terminal-view__search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0.4rem var(--space-md);
+  border-bottom: 1px solid var(--border-main);
+  background: var(--bg-panel);
+}
+
+.terminal-view__search-input {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-main);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--size-xs);
+  padding: 0.2rem 0.5rem;
+  outline: none;
+}
+
+.terminal-view__search-input:focus {
+  border-color: var(--text-accent);
+}
+
+.terminal-view__search-hint {
+  font-size: var(--size-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.terminal-view__search-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--size-sm);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.terminal-view__search-close:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+}
+
 .terminal-view__header {
   display: flex;
   flex-direction: column;

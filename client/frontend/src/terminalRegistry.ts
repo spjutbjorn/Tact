@@ -1,11 +1,13 @@
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+import { SearchAddon } from "xterm-addon-search";
 import { WebglAddon } from "xterm-addon-webgl";
 import { terminalOutputStore } from "./terminalOutputStore";
 
 export interface RegisteredTerminal {
   terminal: Terminal;
   fitAddon: FitAddon;
+  searchAddon: SearchAddon;
   webglAddon?: WebglAddon;
   container: HTMLDivElement;
 }
@@ -46,16 +48,25 @@ class TerminalRegistry {
       allowProposedApi: true,
     });
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon();
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(searchAddon);
     terminal.open(container);
 
     let webglAddon: WebglAddon | undefined;
-    try {
-      webglAddon = new WebglAddon();
-      terminal.loadAddon(webglAddon);
-    } catch (e) {
-      console.warn("WebGL addon could not be loaded, falling back to regular rendering", e);
+    function tryLoadWebgl() {
+      try {
+        webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon?.dispose();
+          webglAddon = undefined;
+        });
+        terminal.loadAddon(webglAddon);
+      } catch {
+        webglAddon = undefined;
+      }
     }
+    tryLoadWebgl();
 
     terminal.onData((data) => {
       this.inputHandler?.(sessionId, data);
@@ -72,7 +83,7 @@ class TerminalRegistry {
       terminal.write(chunk);
     });
 
-    const entry = { terminal, fitAddon, webglAddon, container, unsubOutput };
+    const entry = { terminal, fitAddon, searchAddon, webglAddon, container, unsubOutput };
     this.entries.set(sessionId, entry);
     return entry;
   }

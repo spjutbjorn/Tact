@@ -54,6 +54,15 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: "Terminal",
+    rows: [
+      { keys: [Cmd, "F"], label: "Find in terminal output" },
+      { keys: ["Enter"], label: "Find next match" },
+      { keys: ["Shift", "Enter"], label: "Find previous match" },
+      { keys: ["Esc"], label: "Close search" },
+    ],
+  },
+  {
     title: "Gemma",
     rows: [
       { keys: ["Enter"], label: "Send message" },
