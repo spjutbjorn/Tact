@@ -37,14 +37,14 @@ function GemmaMemoryBar() {
     return () => window.clearInterval(id);
   }, []);
 
-  if (!mem || !mem.used) return null;
-
-  const pct = mem.total > 0 ? Math.min(100, (mem.used / mem.total) * 100) : 0;
-  const usedGB = (mem.used / 1e9).toFixed(1);
+  const pct = mem && mem.total > 0 ? Math.min(100, (mem.used / mem.total) * 100) : 0;
+  const usedGB = mem ? (mem.used / 1e9).toFixed(1) : "0";
 
   useEffect(() => {
     fillRef.current?.style.setProperty("--memory-fill-width", `${pct}%`);
   }, [pct]);
+
+  if (!mem || !mem.used) return null;
 
   return (
     <div className="memory-bar">

@@ -131,6 +131,11 @@ export default function FilePanel({
       }
 
       const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "s") {
+        e.preventDefault();
+        window.dispatchEvent(new Event("tact:save"));
+        return;
+      }
       if (side === "left") {
         if (key === "w") {
           e.preventDefault();

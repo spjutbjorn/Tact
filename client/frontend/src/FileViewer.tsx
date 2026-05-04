@@ -630,8 +630,14 @@ function TextEditor({ path, onSelectFile, onExitToFolderView, previewMode, onDir
           theme="vs-dark"
           value={content}
           onChange={handleEditorChange}
-          onMount={(editor) => {
+          onMount={(editor, monaco) => {
             editor.focus();
+            editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.UpArrow, () => {
+              editor.trigger("keyboard", "editor.action.moveLinesUpAction", null);
+            });
+            editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.DownArrow, () => {
+              editor.trigger("keyboard", "editor.action.moveLinesDownAction", null);
+            });
             editor.onKeyDown((event) => {
               const key = event.browserEvent.key;
               if (key === "Escape") {

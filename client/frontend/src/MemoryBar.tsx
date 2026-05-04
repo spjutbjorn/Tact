@@ -15,16 +15,16 @@ export default function MemoryBar() {
     return () => window.clearInterval(id);
   }, []);
 
-  if (!mem || !mem.total) return null;
-
-  const pct = Math.min(100, (mem.used / mem.total) * 100);
-  const usedGB = (mem.used / 1e9).toFixed(1);
-  const totalGB = Math.round(mem.total / 1e9);
+  const pct = mem && mem.total ? Math.min(100, (mem.used / mem.total) * 100) : 0;
+  const usedGB = mem ? (mem.used / 1e9).toFixed(1) : "0";
+  const totalGB = mem ? Math.round(mem.total / 1e9) : 0;
   const level = pct > 85 ? "error" : pct > 65 ? "warning" : "info";
 
   useEffect(() => {
     fillRef.current?.style.setProperty("--memory-fill-width", `${pct}%`);
   }, [pct]);
+
+  if (!mem || !mem.total) return null;
 
   return (
     <div className="memory-bar">

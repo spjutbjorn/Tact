@@ -63,6 +63,16 @@ const ICONS: Icon[] = [
   },
 ];
 
+function InfoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -135,6 +145,14 @@ export default function IconBar({ activePanel, onToggle, dualFiles, onToggleDual
         )
       ))}
       <div className="icon-bar__spacer" />
+      <button
+        className={`icon-bar__btn${activePanel === "shortcuts" ? " icon-bar__btn--active" : ""}`}
+        title="Keyboard shortcuts"
+        onClick={() => onToggle("shortcuts")}
+        aria-pressed={activePanel === "shortcuts"}
+      >
+        <InfoIcon />
+      </button>
       <button
         className={`icon-bar__btn${activePanel === "settings" ? " icon-bar__btn--active" : ""}`}
         title="Settings"

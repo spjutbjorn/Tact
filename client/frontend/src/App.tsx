@@ -9,6 +9,7 @@ import IconBar from "./IconBar";
 import TerminalPanel from "./TerminalPanel";
 import TerminalView from "./TerminalView";
 import Settings from "./Settings";
+import Shortcuts from "./Shortcuts";
 import { CopyPath, DeleteFile, GetCwd, GitRoot, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput } from "./wails";
 import { basename, isMarkdownPath } from "./path";
 import { terminalRegistry } from "./terminalRegistry";
@@ -336,6 +337,7 @@ export default function App() {
   };
 
   const showSettings = activePanel === "settings";
+  const showShortcuts = activePanel === "shortcuts";
   const showFiles = activePanel === "files";
   const showGit = activePanel === "git";
   const showGemma = activePanel === "gemma";
@@ -402,15 +404,17 @@ export default function App() {
             />
           )}
           {showSettings ? (
-            <Settings 
-              panelWidth={panelWidth} 
-              onPanelWidthChange={setPanelWidth} 
+            <Settings
+              panelWidth={panelWidth}
+              onPanelWidthChange={setPanelWidth}
               fileHandlerSettings={fileHandlerSettings}
               onFileHandlerSettingsChange={setFileHandlerSettings}
               terminalProfiles={terminalProfiles}
               disabledProfileIds={disabledProfileIds}
               onToggleProfileDisabled={toggleProfileDisabled}
             />
+          ) : showShortcuts ? (
+            <Shortcuts />
           ) : showTerminals ? (
             <TerminalView
               session={activeTerminalSession}

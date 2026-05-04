@@ -54,6 +54,7 @@ function DiskSelector({
     <>
       <button
         ref={btnRef}
+        data-volume-picker="true"
         className={`breadcrumb__link disk-selector__trigger${open ? " breadcrumb__link--open" : ""}`}
         onClick={toggle}
       >
