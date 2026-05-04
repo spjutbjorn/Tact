@@ -1,32 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ListVolumes, type VolumeInfo } from "./wails";
-import { joinPath } from "./path";
+import { type VolumeInfo } from "./wails";
 import { currentVolume } from "./filePanelHelpers";
-
-interface Props {
-  path: string;
-  onNavigate: (path: string) => void;
-}
-
-interface Segment {
-  label: string;
-  path: string;
-}
-
-function parseSegments(fullPath: string, volumePath: string): Segment[] {
-  const relative = fullPath.slice(volumePath === "/" ? 0 : volumePath.length);
-  const parts = relative.split("/").filter(Boolean);
-  const segments: Segment[] = [];
-
-  parts.reduce((acc, part) => {
-    const current = joinPath(acc || volumePath, part);
-    segments.push({ label: part, path: current });
-    return current;
-  }, volumePath === "/" ? "" : volumePath);
-
-  return segments;
-}
 
 function DiskSelector({
   path,
@@ -49,10 +24,7 @@ function DiskSelector({
     if (!open) return;
     function close(e: MouseEvent) {
       const target = e.target as Node;
-      if (
-        !btnRef.current?.contains(target) &&
-        !dropdownRef.current?.contains(target)
-      ) {
+      if (!btnRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
         setOpen(false);
       }
     }
@@ -90,13 +62,9 @@ function DiskSelector({
           <path d="M0 0l5 6 5-6z" />
         </svg>
       </button>
-
       {open &&
         createPortal(
-          <div
-            ref={dropdownRef}
-            className="disk-selector__dropdown"
-          >
+          <div ref={dropdownRef} className="disk-selector__dropdown">
             {volumes.map((v) => (
               <button
                 key={v.path}
@@ -110,54 +78,26 @@ function DiskSelector({
               </button>
             ))}
           </div>,
-          document.body
+          document.body,
         )}
     </>
   );
 }
 
-export default function Breadcrumb({ path, onNavigate }: Props) {
-  const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
-
-  useEffect(() => {
-    ListVolumes().then(setVolumes);
-  }, []);
-
-  const vol = volumes.length ? currentVolume(path, volumes) : null;
-  const segments = vol ? parseSegments(path, vol.path) : [];
-
+export default function FilePanelVolumePicker({
+  path,
+  volumes,
+  onNavigate,
+  onOpen,
+}: {
+  path: string;
+  volumes: VolumeInfo[];
+  onNavigate: (p: string) => void;
+  onOpen: () => void;
+}) {
   return (
-    <nav className="breadcrumb" aria-label="Current location">
-      {vol && (
-        <>
-          <DiskSelector
-            path={path}
-            volumes={volumes}
-            onNavigate={onNavigate}
-            onOpen={() => ListVolumes().then(setVolumes)}
-          />
-          {segments.length > 0 && <span className="breadcrumb__sep">/</span>}
-        </>
-      )}
-
-      {segments.map((seg, i) => {
-        const isLast = i === segments.length - 1;
-        return (
-          <span key={seg.path} className="breadcrumb__item">
-            {i > 0 && <span className="breadcrumb__sep">/</span>}
-            {isLast ? (
-              <span className="breadcrumb__current">{seg.label}</span>
-            ) : (
-              <button
-                className="breadcrumb__link"
-                onClick={() => onNavigate(seg.path)}
-              >
-                {seg.label}
-              </button>
-            )}
-          </span>
-        );
-      })}
-    </nav>
+    <>
+      <DiskSelector path={path} volumes={volumes} onNavigate={onNavigate} onOpen={onOpen} />
+    </>
   );
 }

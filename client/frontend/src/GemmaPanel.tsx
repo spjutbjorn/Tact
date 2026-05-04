@@ -1,23 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { GemmaMemory, ListDir, ListVolumes, OllamaChat } from "./wails";
+import { GemmaMemory, ListDir, ListVolumes, OllamaChat, type VolumeInfo } from "./wails";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { DEFAULT_HIDDEN_NAMES } from "./fileHandlers";
 import MemoryBar from "./MemoryBar";
 import { dirname, joinPath } from "./path";
+import { currentVolume } from "./filePanelHelpers";
 import { FileIcon, FolderIcon } from "./fileIcons";
-
-interface VolumeInfo {
-  path: string;
-  name: string;
-}
-
-function currentVolume(path: string, volumes: VolumeInfo[]): VolumeInfo {
-  const match = volumes
-    .filter((v) => v.path !== "/")
-    .sort((a, b) => b.path.length - a.path.length)
-    .find((v) => path === v.path || path.startsWith(v.path + "/"));
-  return match ?? volumes.find((v) => v.path === "/") ?? { path: "/", name: "local" };
-}
 
 function extractMentionedFiles(text: string, candidates: string[]): string[] {
   const lower = text.toLowerCase();
@@ -37,6 +25,7 @@ function extractMentionedDirs(text: string, candidates: string[]): string[] {
 
 function GemmaMemoryBar() {
   const [mem, setMem] = useState<{ used: number; total: number } | null>(null);
+  const fillRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -53,10 +42,14 @@ function GemmaMemoryBar() {
   const pct = mem.total > 0 ? Math.min(100, (mem.used / mem.total) * 100) : 0;
   const usedGB = (mem.used / 1e9).toFixed(1);
 
+  useEffect(() => {
+    fillRef.current?.style.setProperty("--memory-fill-width", `${pct}%`);
+  }, [pct]);
+
   return (
     <div className="memory-bar">
       <div className="memory-bar__track">
-        <div className="memory-bar__fill" style={{ width: `${pct}%`, background: "var(--color-warning)" }} />
+        <div ref={fillRef} className="memory-bar__fill memory-bar__fill--info" />
       </div>
       <div className="memory-bar__label">
         <span>GPU</span>
@@ -115,6 +108,7 @@ export default function GemmaPanel({
   });
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!path) return;
@@ -177,6 +171,10 @@ export default function GemmaPanel({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, messages[messages.length - 1]?.content.length]);
+
+  useEffect(() => {
+    sidebarRef.current?.style.setProperty("--gemma-sidebar-width", `${width}px`);
+  }, [width]);
 
   const visibleEntries = entries.filter((e) => {
     if (showHidden) return true;
@@ -267,7 +265,7 @@ export default function GemmaPanel({
         </div>
       </div>
 
-      <div className="gemma-panel__sidebar" style={{ width: `${width}px` }}>
+      <div ref={sidebarRef} className="gemma-panel__sidebar">
           <MemoryBar />
           <GemmaMemoryBar />
           <div className="gemma-panel__sidebar-header">

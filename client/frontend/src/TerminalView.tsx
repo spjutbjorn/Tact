@@ -49,16 +49,11 @@ export default function TerminalView({ session, activityBySessionId, sidebarOpen
     const doFit = () => {
       requestAnimationFrame(() => {
         entry.fitAddon.fit();
-        // Backend defers PTY spawn until first ResizeTerminalSession; xterm's
-        // onResize fires only when dims actually change, so push the current dims
-        // explicitly to guarantee the spawn kicks off.
         void ResizeTerminalSession(session.id, entry.terminal.cols, entry.terminal.rows);
       });
     };
 
-    // Initial fit
     doFit();
-    // Second fit after a small delay to handle layout settling
     const timer = setTimeout(doFit, 100);
 
     entry.terminal.focus();

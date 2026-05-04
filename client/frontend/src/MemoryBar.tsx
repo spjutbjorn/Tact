@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MemoryUsage } from "./wails";
 
 export default function MemoryBar() {
   const [mem, setMem] = useState<{ used: number; total: number } | null>(null);
+  const fillRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -19,12 +20,16 @@ export default function MemoryBar() {
   const pct = Math.min(100, (mem.used / mem.total) * 100);
   const usedGB = (mem.used / 1e9).toFixed(1);
   const totalGB = Math.round(mem.total / 1e9);
-  const color = pct > 85 ? "var(--color-error)" : pct > 65 ? "var(--color-warning)" : "var(--color-info)";
+  const level = pct > 85 ? "error" : pct > 65 ? "warning" : "info";
+
+  useEffect(() => {
+    fillRef.current?.style.setProperty("--memory-fill-width", `${pct}%`);
+  }, [pct]);
 
   return (
     <div className="memory-bar">
       <div className="memory-bar__track">
-        <div className="memory-bar__fill" style={{ width: `${pct}%`, background: color }} />
+        <div ref={fillRef} className={`memory-bar__fill memory-bar__fill--${level}`} />
       </div>
       <div className="memory-bar__label">
         <span>RAM</span>

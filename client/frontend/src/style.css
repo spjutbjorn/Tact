@@ -17,6 +17,19 @@
   height: 100%;
   border-radius: 2px;
   transition: width var(--transition-normal), background var(--transition-normal);
+  width: var(--memory-fill-width, 0%);
+}
+
+.memory-bar__fill--info {
+  background: var(--color-info);
+}
+
+.memory-bar__fill--warning {
+  background: var(--color-warning);
+}
+
+.memory-bar__fill--error {
+  background: var(--color-error);
 }
 
 .memory-bar__label {
@@ -26,10 +39,6 @@
   color: var(--text-dim);
   letter-spacing: 0.02em;
 }
-
-/* ── Breadcrumb ── */
-
-/* ── Title bar ── */
 
 .titlebar {
   height: var(--header-height);
@@ -165,8 +174,6 @@
 }
 
 
-/* ── Disk selector ── */
-
 .disk-selector {
   position: relative;
   display: inline-flex;
@@ -189,6 +196,8 @@
 .disk-selector__dropdown {
   position: fixed;
   min-width: 140px;
+  top: var(--dropdown-top, 0px);
+  left: var(--dropdown-left, 0px);
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: 0;
@@ -215,8 +224,6 @@
 .disk-selector__option--active {
   color: var(--text-main);
 }
-
-/* ── Workspace (below breadcrumb) ── */
 
 .workspace {
   display: flex;
@@ -295,6 +302,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  width: var(--terminal-sidebar-width, 320px);
 }
 
 .terminal-sidebar--right {
@@ -781,8 +789,6 @@
   color: var(--text-main);
 }
 
-/* ── Terminal panel ── */
-
 .terminal-panel {
   flex: 1;
   display: flex;
@@ -1065,8 +1071,6 @@
   color: var(--text-dim);
 }
 
-/* ── Editor ── */
-
 .editor {
   flex: 1;
   display: flex;
@@ -1166,8 +1170,6 @@
   padding: 1.5rem 1.25rem 2rem;
 }
 
-/* ── File entries: make non-dir files hoverable ── */
-
 .file-panel__entry--file {
   cursor: pointer;
   color: var(--text-muted);
@@ -1177,8 +1179,6 @@
   background: var(--bg-hover);
   color: var(--text-main);
 }
-
-/* ── Markdown viewer ── */
 
 .md-viewer {
   padding: 2rem 2.25rem 2.5rem;
@@ -1369,8 +1369,6 @@
   position: relative;
 }
 
-/* ── JSON Highlighter ── */
-
 .json-highlighter {
   font-family: var(--font-mono);
   font-size: var(--size-base);
@@ -1405,8 +1403,6 @@
   color: #569cd6; /* Blue */
 }
 
-/* ── DOCX viewer ── */
-
 .docx-viewer {
   flex: 1;
   overflow-y: auto;
@@ -1426,8 +1422,6 @@
   padding: 2rem;
   color: var(--text-muted);
 }
-
-/* ── PDF viewer ── */
 
 .pdf-viewer {
   flex: 1;
@@ -1477,8 +1471,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* ── Video viewer ── */
 
 .video-viewer {
   flex: 1;
@@ -1542,8 +1534,6 @@
   outline: none;
 }
 
-/* ── Image viewer ── */
-
 .image-viewer {
   flex: 1;
   overflow: hidden;
@@ -1559,6 +1549,8 @@
   align-items: center;
   justify-content: center;
   transform-origin: center;
+  transform: var(--image-viewer-transform, none);
+  transition: var(--image-viewer-transition, none);
 }
 
 .image-viewer.media-viewer--fullscreen .media-viewer__surface {
@@ -1604,8 +1596,6 @@
   text-align: center;
 }
 
-/* ── File panel ── */
-
 .file-panel {
   flex-shrink: 0;
   display: flex;
@@ -1613,6 +1603,7 @@
   background: var(--bg-surface);
   overflow: hidden;
   position: relative;
+  width: var(--file-panel-width, 320px);
 }
 
 .file-panel--right {
@@ -1913,6 +1904,22 @@
   padding-right: 4px;
 }
 
+.file-panel__chevron {
+  transition: transform 0.1s;
+}
+
+.file-panel__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.git-panel__chevron {
+  transition: transform 0.1s;
+}
+
+.git-panel__chevron--expanded {
+  transform: rotate(90deg);
+}
+
 .file-panel__expand-icon:hover {
   color: var(--text-muted);
 }
@@ -2112,8 +2119,6 @@
   opacity: 1;
 }
 
-/* ── Icon bar ── */
-
 .icon-bar {
   width: var(--icon-bar-width);
   flex-shrink: 0;
@@ -2174,8 +2179,6 @@
   flex: 1;
 }
 
-/* ── Settings ── */
-
 .settings {
   flex: 1;
   display: flex;
@@ -2200,6 +2203,10 @@
 
 .settings__body {
   padding: 1.5rem 2rem;
+}
+
+.settings__spacer {
+  flex: 1;
 }
 
 .settings__section {
@@ -2370,8 +2377,6 @@
   color: var(--text-muted);
 }
 
-/* Extension settings */
-
 .settings__ext-toolbar {
   display: flex;
   align-items: center;
@@ -2527,9 +2532,6 @@
   cursor: default;
 }
 
-/* ── Git Panel ── */
-
-/* ── Gemma panel ─────────────────────────────────────── */
 .gemma-panel {
   flex: 1;
   display: flex;
@@ -2544,6 +2546,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  width: var(--gemma-sidebar-width, 320px);
 }
 
 .gemma-panel__sidebar-header {
@@ -3041,6 +3044,11 @@
   overflow-y: auto;
 }
 
+.git-panel__column--scroll {
+  border-left: 1px solid var(--border-main);
+  overflow-y: auto;
+}
+
 .git-panel__column--changes .git-panel__section {
   flex: none;
 }
@@ -3418,6 +3426,26 @@
   justify-content: center;
   font-size: 0.68rem;
   letter-spacing: 0.04em;
+}
+
+.git-panel__status-pill--modified {
+  color: #4ade80;
+}
+
+.git-panel__status-pill--untracked {
+  color: #60a5fa;
+}
+
+.git-panel__status-pill--deleted {
+  color: #f87171;
+}
+
+.git-panel__status-pill--added {
+  color: #fbbf24;
+}
+
+.git-panel__status-pill--plain {
+  color: #9ca3af;
 }
 
 .git-panel__empty {

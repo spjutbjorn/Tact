@@ -79,3 +79,11 @@ export function getGitStatusColor(statusChar: string): string {
   if (statusChar === "A") return "#fbbf24";
   return "#9ca3af";
 }
+
+export function getGitStatusTone(statusChar: string): string {
+  if (statusChar === "M") return "modified";
+  if (statusChar === "?") return "untracked";
+  if (statusChar === "D") return "deleted";
+  if (statusChar === "A") return "added";
+  return "plain";
+}

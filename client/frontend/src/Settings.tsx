@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { type FileHandlerSettings, DEFAULT_TEXT_EXTENSIONS, DEFAULT_HIDDEN_NAMES } from "./fileHandlers";
+import { type FileHandlerSettings } from "./fileHandlers";
 import { type TerminalProfile } from "./wails";
+import { addExtension, filterExtensions, getExtensionClass, removeExtension, resetHiddenNames, resetTextExtensions } from "./settingsHelpers";
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 600;
@@ -31,28 +32,26 @@ export default function Settings({
   const exts = fileHandlerSettings.textExtensions;
   const hiddenNames = fileHandlerSettings.hiddenNames;
 
-  const filtered = filter.trim()
-    ? exts.filter((e) => e.includes(filter.trim().toLowerCase().replace(/^\./, "")))
-    : exts;
+  const filtered = filterExtensions(exts, filter);
 
   function handleRemove(ext: string) {
-    onFileHandlerSettingsChange({ ...fileHandlerSettings, textExtensions: exts.filter((e) => e !== ext) });
+    onFileHandlerSettingsChange({ ...fileHandlerSettings, textExtensions: removeExtension(exts, ext) });
   }
 
   function handleAdd() {
-    const clean = newExt.trim().toLowerCase().replace(/^\./, "");
-    if (!clean || exts.includes(clean)) {
+    const next = addExtension(exts, newExt);
+    if (next === exts) {
       setNewExt("");
       return;
     }
-    onFileHandlerSettingsChange({ ...fileHandlerSettings, textExtensions: [...exts, clean].sort() });
+    onFileHandlerSettingsChange({ ...fileHandlerSettings, textExtensions: next });
     setNewExt("");
   }
 
   function handleReset() {
     onFileHandlerSettingsChange({ 
       ...fileHandlerSettings, 
-      textExtensions: [...DEFAULT_TEXT_EXTENSIONS] 
+      textExtensions: resetTextExtensions() 
     });
   }
 
@@ -79,26 +78,8 @@ export default function Settings({
   function handleResetHidden() {
     onFileHandlerSettingsChange({ 
       ...fileHandlerSettings, 
-      hiddenNames: [...DEFAULT_HIDDEN_NAMES] 
+      hiddenNames: resetHiddenNames() 
     });
-  }
-
-  function getExtClass(ext: string): string {
-    const isDefault = DEFAULT_TEXT_EXTENSIONS.includes(ext);
-    let cls = "settings__ext-tag";
-    if (isDefault) cls += " settings__ext-tag--default";
-    
-    const data = ["json", "yaml", "yml", "toml", "xml", "csv", "sql", "proto", "graphql", "gql", "env", "conf", "ini"];
-    const code = ["js", "ts", "tsx", "jsx", "py", "go", "rs", "cpp", "c", "h", "java", "cs", "rb", "php", "pl", "swift", "kt", "scala", "dart", "lua", "clj", "erl", "ex", "sh", "bash"];
-    const web = ["html", "css", "scss", "sass", "less", "styl", "xhtml", "vue", "svelte"];
-    const doc = ["md", "txt", "log", "rst", "adoc", "org", "tex", "rmd", "qmd", "mdx", "mdc"];
-    
-    if (data.includes(ext)) cls += " settings__ext-tag--data";
-    else if (code.includes(ext)) cls += " settings__ext-tag--code";
-    else if (web.includes(ext)) cls += " settings__ext-tag--web";
-    else if (doc.includes(ext)) cls += " settings__ext-tag--doc";
-    
-    return cls;
   }
 
   return (
@@ -106,7 +87,6 @@ export default function Settings({
       <div className="settings__header">Settings</div>
       <div className="settings__body">
 
-        {/* ── GLOBAL/UI GROUP ── */}
         <div className="settings__group">
           <h2 className="settings__group-title">Interface</h2>
           <section className="settings__section">
@@ -126,7 +106,6 @@ export default function Settings({
           </section>
         </div>
 
-        {/* ── TERMINAL GROUP ── */}
         <div className="settings__group">
           <h2 className="settings__group-title">Terminal</h2>
 
@@ -148,7 +127,7 @@ export default function Settings({
                           <span className="settings__profile-name">{profile.name}</span>
                           <span className="settings__profile-model">{profile.model}</span>
                         </div>
-                        <div style={{ flex: 1 }} />
+                        <div className="settings__spacer" />
                         <div className="settings__toggle">
                           <input
                             type="checkbox"
@@ -169,7 +148,6 @@ export default function Settings({
           </section>
         </div>
 
-        {/* ── FILES GROUP ── */}
         <div className="settings__group">
           <h2 className="settings__group-title">Files</h2>
           
@@ -179,7 +157,7 @@ export default function Settings({
               Folders and files with these names are hidden from the file panel. Folders starting with "." are always hidden.
             </p>
             <div className="settings__ext-toolbar">
-              <div style={{ flex: 1 }} />
+              <div className="settings__spacer" />
               <button
                 type="button"
                 className="settings__ext-reset"
@@ -260,7 +238,7 @@ export default function Settings({
                 <span className="settings__ext-empty">No matches</span>
               ) : (
                 filtered.map((ext) => (
-                  <span key={ext} className={getExtClass(ext)}>
+                  <span key={ext} className={getExtensionClass(ext)}>
                     .{ext}
                     <button
                       type="button"

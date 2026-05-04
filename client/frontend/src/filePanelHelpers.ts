@@ -21,12 +21,42 @@ export function fileRowClassName(isDir: boolean, active: boolean, shared: boolea
     .join(" ");
 }
 
-export function entryIndentStyle(depth: number): CSSProperties {
-  return { paddingLeft: `${depth * 12 + 12}px` };
+export function entryIndentStyle(depth: number, step = 12, base = 12): CSSProperties {
+  return { paddingLeft: `${depth * step + base}px` };
 }
 
 export function isEditableTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   const tagName = element?.tagName?.toLowerCase();
   return tagName === "input" || tagName === "textarea" || Boolean(element?.isContentEditable);
+}
+
+export function formatFileSize(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+
+  const formatWithDigits = (digits: 0 | 1 | 2) => {
+    const formatted = digits === 0 ? `${Math.round(value)}` : value.toFixed(digits);
+    const digitCount = formatted.replace(/\D/g, "").length;
+    return digitCount <= 3 ? formatted : null;
+  };
+
+  const formatted = formatWithDigits(2) ?? formatWithDigits(1) ?? formatWithDigits(0);
+  if (formatted) return `${formatted} ${units[unit]}`;
+  if (unit < units.length - 1) return formatFileSize(value * 1024);
+  return `${Math.round(value)} ${units[unit]}`;
+}
+
+export function currentVolume(path: string, volumes: Array<{ path: string; name: string }>): { path: string; name: string } {
+  const match = volumes
+    .filter((volume) => volume.path !== "/")
+    .sort((a, b) => b.path.length - a.path.length)
+    .find((volume) => path === volume.path || path.startsWith(`${volume.path}/`));
+  return match ?? volumes.find((volume) => volume.path === "/") ?? { path: "/", name: "local" };
 }

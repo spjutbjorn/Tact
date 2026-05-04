@@ -27,14 +27,12 @@ export const DEFAULT_HIDDEN_NAMES: readonly string[] = [
   "Thumbs.db",
   "desktop.ini",
   "Volumes",
-  // Windows
   "Windows",
   "Program Files",
   "Program Files (x86)",
   "PerfLogs",
   "Recovery",
   "Boot",
-  // macOS / Unix root
   "Library",
   "System",
   "bin",
@@ -82,43 +80,28 @@ export const IMAGE_MIME: Record<string, string> = {
 };
 
 export const DEFAULT_TEXT_EXTENSIONS: readonly string[] = [
-  // Plain text & docs
   "txt", "text", "log",
   "md", "markdown", "mdx", "rst", "adoc", "asciidoc", "org",
   "tex", "latex", "bib", "bibtex", "rmd", "qmd",
-  // Data & config
   "json", "jsonc", "jsonl", "ndjson",
   "yaml", "yml", "toml", "ini", "conf", "cfg", "rc", "env", "properties", "prop",
   "xml", "csv", "tsv",
   "sql", "graphql", "gql", "proto", "cue", "rego",
   "diff", "patch", "lock",
-  // Shell & scripts
   "sh", "bash", "zsh", "fish", "ps1", "psm1",
-  // Python & Ruby
   "py", "pyi", "rb", "php", "pl", "pm",
-  // Go & Rust
   "go", "rs",
-  // JavaScript & TypeScript
   "js", "jsx", "ts", "tsx", "cjs", "mjs", "cts", "mts", "flow",
-  // C family
   "c", "h", "cpp", "hpp", "cc", "hh", "cxx", "hxx",
-  // JVM
   "java", "kt", "kts", "scala", "groovy", "gradle",
-  // .NET
   "cs", "fs", "fsx",
-  // Other compiled
   "swift", "nim", "dart", "hs",
-  // Functional & BEAM
   "lua", "clj", "cljs", "edn", "erl", "ex", "exs",
-  // Scientific
   "r", "jl", "m", "mm", "matlab",
-  // Web & markup
   "html", "htm", "css", "scss", "sass", "less", "styl", "xhtml", "vue", "svelte",
   "xaml", "xsl", "xslt", "plist",
-  // Build & project files
   "make", "mk", "cmake", "cabal", "nix", "mod", "sum",
   "vcxproj", "csproj", "sln", "iml",
-  // Misc
   "mdc", "manifest", "version", "work", "applescript", "bnf",
   "md5", "map", "vhd", "vhdl", "wat",
 ];
@@ -166,7 +149,6 @@ export function loadFileHandlerSettings(): FileHandlerSettings {
       return normalizeFileHandlerSettings(JSON.parse(raw) as Partial<FileHandlerSettings>);
     }
   } catch {
-    // ignore
   }
   return createDefaultFileHandlerSettings();
 }

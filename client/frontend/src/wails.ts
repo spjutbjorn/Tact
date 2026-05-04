@@ -83,9 +83,22 @@ interface WailsApp {
   GemmaMemory: () => Promise<{ used: number; total: number }>;
 }
 
+declare global {
+  interface Window {
+    go?: {
+      main?: {
+        App?: WailsApp;
+      };
+    };
+    runtime?: {
+      WindowToggleMaximise: () => void;
+      BrowserOpenURL: (url: string) => void;
+    };
+  }
+}
+
 function app(): WailsApp | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (window as any).go?.main?.App;
+  return window.go?.main?.App;
 }
 
 export const GetCwd = (): Promise<string> =>
@@ -221,7 +234,7 @@ export const GitShow = (revision: string, path: string): Promise<string> =>
   app()?.GitShow(revision, path) ?? Promise.resolve("");
 
 export const WindowToggleMaximise = (): void =>
-  (window as any).runtime.WindowToggleMaximise();
+  window.runtime?.WindowToggleMaximise();
 
 export const MkDir = (path: string): Promise<boolean> =>
   app()?.MkDir(path) ?? Promise.resolve(false);
@@ -236,6 +249,5 @@ export const GemmaMemory = (): Promise<{ used: number; total: number }> =>
   app()?.GemmaMemory() ?? Promise.resolve({ used: 0, total: 0 });
 
 export const BrowserOpenURL = (url: string) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).runtime?.BrowserOpenURL(url);
+  window.runtime?.BrowserOpenURL(url);
 };

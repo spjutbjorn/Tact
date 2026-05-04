@@ -250,6 +250,7 @@ function ImageViewer({
 }) {
   const src = useBinaryObjectUrl(path, mime);
   const frameRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -269,19 +270,18 @@ function ImageViewer({
         const delta = -e.deltaY;
         const factor = Math.pow(1.1, delta / 100);
         const nextZoom = Math.min(Math.max(0.1, zoom * factor), 10);
-        
+
         if (nextZoom !== zoom) {
-          // Zoom towards cursor
           const rect = frame.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
           const mouseY = e.clientY - rect.top;
-          
+
           const zoomPointX = (mouseX - rect.width / 2 - offset.x) / zoom;
           const zoomPointY = (mouseY - rect.height / 2 - offset.y) / zoom;
-          
+
           const nextOffsetX = mouseX - rect.width / 2 - zoomPointX * nextZoom;
           const nextOffsetY = mouseY - rect.height / 2 - zoomPointY * nextZoom;
-          
+
           setZoom(nextZoom);
           setOffset({ x: nextOffsetX, y: nextOffsetY });
         }
@@ -296,6 +296,16 @@ function ImageViewer({
     setZoom(1);
     setOffset({ x: 0, y: 0 });
   }, [path]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    const surface = surfaceRef.current;
+    if (!frame || !surface) return;
+
+    frame.style.cursor = zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default";
+    surface.style.setProperty("--image-viewer-transform", `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`);
+    surface.style.setProperty("--image-viewer-transition", isDragging ? "none" : "transform 0.1s ease-out");
+  }, [zoom, offset.x, offset.y, isDragging]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom > 1 || e.button === 1) {
@@ -329,20 +339,16 @@ function ImageViewer({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      style={{ cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
     >
-      <div 
-        className="media-viewer__surface"
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-          transition: isDragging ? "none" : "transform 0.1s ease-out"
-        }}
+      <div
+        ref={surfaceRef}
+        className="media-viewer__surface image-viewer__surface"
       >
-        <img 
+        <img
           ref={imgRef}
-          src={src} 
-          alt={basename(path)} 
-          className="image-viewer__img" 
+          src={src}
+          alt={basename(path)}
+          className="image-viewer__img"
           draggable={false}
         />
       </div>
@@ -524,9 +530,10 @@ function VideoViewer({
       onMouseDownCapture={() => frameRef.current?.focus()}
       onKeyDown={isFullscreen ? undefined : onKeyDown}
     >
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <div className="media-viewer__surface">
-        <video src={src} controls className="video-viewer__video" onError={handleError} />
+        <video src={src} controls className="video-viewer__video" onError={handleError}>
+          <track kind="captions" label="English captions" src="data:text/vtt,WEBVTT%0A%0A" default />
+        </video>
       </div>
     </div>
   );

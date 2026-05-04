@@ -279,6 +279,7 @@ export default function TerminalPanel({
     [activityBySessionId, now, sessions],
   );
   const previousIdleSessionIds = useRef<string[]>([]);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -294,6 +295,10 @@ export default function TerminalPanel({
     setRenameValue("");
     renameSessionNameRef.current = null;
   }, [editingSessionId, sessions]);
+
+  useEffect(() => {
+    sidebarRef.current?.style.setProperty("--terminal-sidebar-width", `${width}px`);
+  }, [width]);
 
   useEffect(() => {
     const previous = new Set(previousIdleSessionIds.current);
@@ -335,7 +340,7 @@ export default function TerminalPanel({
   }
 
   return (
-    <aside className="terminal-sidebar terminal-sidebar--right" style={{ width: `${width}px` }}>
+    <aside ref={sidebarRef} className="terminal-sidebar terminal-sidebar--right">
       <section className="terminal-sidebar__section">
         <div className="terminal-sidebar__heading">
           <span className="terminal-sidebar__label">Clients</span>

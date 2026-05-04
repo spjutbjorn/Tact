@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { GitNode } from "./git-panel-utils";
-import { getGitStatusColor } from "./git-panel-utils";
+import { getGitStatusTone } from "./git-panel-utils";
+import { entryIndentStyle } from "./filePanelHelpers";
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
@@ -9,7 +10,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
       fill="currentColor"
       width="10"
       height="10"
-      style={{ transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.1s" }}
+      className={expanded ? "git-panel__chevron git-panel__chevron--expanded" : "git-panel__chevron"}
     >
       <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
     </svg>
@@ -55,7 +56,7 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
   if (node.isDir) {
     return (
       <li className="git-panel__tree-node">
-        <div className="file-panel__entry file-panel__entry--dir git-panel__tree-row" style={{ paddingLeft: `${depth * 14 + 12}px` }}>
+        <div className="file-panel__entry file-panel__entry--dir git-panel__tree-row" style={entryIndentStyle(depth, 14)}>
           <div className="file-panel__entry-left git-panel__tree-left" onClick={() => onAction(node.path)}>
             <button
               type="button"
@@ -99,7 +100,7 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
     <li className="git-panel__item-wrapper">
       <div
         className={`file-panel__entry file-panel__entry--file git-panel__tree-row${isSelected ? " git-panel__tree-row--selected" : ""}`}
-        style={{ paddingLeft: `${depth * 14 + 12}px` }}
+        style={entryIndentStyle(depth, 14)}
       >
         <div
           className="file-panel__entry-left git-panel__tree-left"
@@ -113,8 +114,7 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
           }}
         >
           <span
-            className={`git-panel__status-pill git-panel__status-pill--${node.statusChar || "plain"}`}
-            style={{ color: getGitStatusColor(node.statusChar || "") }}
+            className={`git-panel__status-pill git-panel__status-pill--${getGitStatusTone(node.statusChar || "")}`}
           >
             <FileIcon />
             <span>{node.statusChar}</span>

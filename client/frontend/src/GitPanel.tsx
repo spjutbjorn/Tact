@@ -292,7 +292,6 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
       </div>
 
       <div className={`git-panel__content ${isSidebarCollapsed ? "git-panel__content--full" : "git-panel__content--two-col"}`}>
-        {/* LEFT: Diff */}
         <section className="git-panel__column git-panel__column--diff">
           <div className="git-panel__section-title git-panel__diff-title">
             {selectedFile ?? "Diff"}
@@ -302,9 +301,8 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
           </div>
         </section>
 
-        {/* RIGHT: Changes + Branches + Log */}
         {!isSidebarCollapsed && (
-          <section className="git-panel__column git-panel__column--changes" style={{ borderLeft: "1px solid var(--border-main)", overflowY: "auto" }}>
+          <section className="git-panel__column git-panel__column--changes git-panel__column--scroll">
             <section className="git-panel__section">
             <div className="git-panel__section-title">Staged ({stagedFiles.length})</div>
             <ul className="file-panel__list">
@@ -359,7 +357,6 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
             </div>
           </section>
 
-          {/* Branches Section (moved from left) */}
           <section className="git-panel__section">
             <div className="git-panel__section-title">Branches</div>
             <div className="git-panel__branch-card">
@@ -423,7 +420,6 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
             </div>
           </section>
 
-          {/* Log Section (moved from left) */}
           <section className="git-panel__section">
             <div className="git-panel__section-title">Commit log</div>
             {gitLog.trim() ? (
