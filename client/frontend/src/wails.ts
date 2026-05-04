@@ -220,6 +220,9 @@ export const GitDiff = (path: string): Promise<string> =>
 export const GitShow = (revision: string, path: string): Promise<string> =>
   app()?.GitShow(revision, path) ?? Promise.resolve("");
 
+export const WindowToggleMaximise = (): void =>
+  (window as any).runtime.WindowToggleMaximise();
+
 export const MkDir = (path: string): Promise<boolean> =>
   app()?.MkDir(path) ?? Promise.resolve(false);
 

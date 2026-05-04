@@ -304,7 +304,7 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
 
         {/* RIGHT: Changes + Branches + Log */}
         {!isSidebarCollapsed && (
-          <section className="git-panel__column git-panel__column--changes" style={{ borderLeft: "1px solid #1c1c1c", overflowY: "auto" }}>
+          <section className="git-panel__column git-panel__column--changes" style={{ borderLeft: "1px solid var(--border-main)", overflowY: "auto" }}>
             <section className="git-panel__section">
             <div className="git-panel__section-title">Staged ({stagedFiles.length})</div>
             <ul className="file-panel__list">

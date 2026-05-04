@@ -56,7 +56,7 @@ function GemmaMemoryBar() {
   return (
     <div className="memory-bar">
       <div className="memory-bar__track">
-        <div className="memory-bar__fill" style={{ width: `${pct}%`, background: "var(--mem-bar-mid)" }} />
+        <div className="memory-bar__fill" style={{ width: `${pct}%`, background: "var(--color-warning)" }} />
       </div>
       <div className="memory-bar__label">
         <span>GPU</span>
@@ -84,9 +84,9 @@ const MODE_OPTIONS: Array<{
   label: string;
   hint: string;
 }> = [
-  { value: "standard", label: "Standard", hint: "Direkt svar" },
-  { value: "thinking", label: "Thinking", hint: "Visa tänkande" },
-  { value: "expert", label: "Expert", hint: "Mer noggrant" },
+  { value: "standard", label: "Standard", hint: "Fast reply" },
+  { value: "thinking", label: "Thinking", hint: "Show reasoning" },
+  { value: "expert", label: "Expert", hint: "More thorough" },
 ];
 
 interface Props {

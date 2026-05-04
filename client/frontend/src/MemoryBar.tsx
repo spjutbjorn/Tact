@@ -19,7 +19,7 @@ export default function MemoryBar() {
   const pct = Math.min(100, (mem.used / mem.total) * 100);
   const usedGB = (mem.used / 1e9).toFixed(1);
   const totalGB = Math.round(mem.total / 1e9);
-  const color = pct > 85 ? "var(--mem-bar-high)" : pct > 65 ? "var(--mem-bar-mid)" : "var(--mem-bar-low)";
+  const color = pct > 85 ? "var(--color-error)" : pct > 65 ? "var(--color-warning)" : "var(--color-info)";
 
   return (
     <div className="memory-bar">

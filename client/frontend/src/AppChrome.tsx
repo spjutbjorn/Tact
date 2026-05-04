@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import type { TerminalProfile } from "./wails";
+import { WindowToggleMaximise } from "./wails";
+import { classNames } from "./ui";
 
 function EditIcon() {
   return (
@@ -44,10 +46,8 @@ export function ToolbarButton({
   onClick: () => void;
   children: ReactNode;
 }) {
-  const className = ["toolbar-btn", active ? "active" : "", dirty ? "dirty" : ""].filter(Boolean).join(" ");
-
   return (
-    <button className={className} onClick={onClick} disabled={disabled} title={title}>
+    <button type="button" className={classNames("toolbar-btn", active && "active", dirty && "dirty")} onClick={onClick} disabled={disabled} title={title}>
       {children}
     </button>
   );
@@ -55,7 +55,12 @@ export function ToolbarButton({
 
 export function AppTitlebar({ fileName }: { fileName: string }) {
   return (
-    <div className="titlebar">
+    <div
+      className="titlebar"
+      onDoubleClick={() => {
+        WindowToggleMaximise();
+      }}
+    >
       <div className="titlebar__left" />
       <div className="titlebar__filename">{fileName}</div>
       <div className="titlebar__right" />
@@ -120,7 +125,8 @@ export function ContentToolbar({
               {terminalProfiles.map((profile) => (
                 <button
                   key={profile.id}
-                  className={`terminal-toolbar__btn${activeTerminalId === profile.id ? " terminal-toolbar__btn--active" : ""}`}
+                  type="button"
+                  className={classNames("terminal-toolbar__btn", activeTerminalId === profile.id && "terminal-toolbar__btn--active")}
                   onClick={() => onSelectTerminal?.(profile.id)}
                   title={`${profile.name} · ${profile.command}`}
                 >

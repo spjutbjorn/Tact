@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import { DirSize, FileEntry, ListDir, ListRecursiveFiles, ListVolumes, VolumeInfo, WriteTextFile, Rename, MkDir } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 import { FileIcon, FolderIcon } from "./fileIcons";
-
-import { type FileHandlerSettings, DEFAULT_HIDDEN_NAMES } from "./fileHandlers";
+import { type FileHandlerSettings } from "./fileHandlers";
+import { createPeerSignature, entryIndentStyle, fileRowClassName, isEditableTarget, shouldShowFileEntry } from "./filePanelHelpers";
 
 type FileSide = "left" | "right";
 
@@ -247,17 +247,14 @@ function FileTreeItem({
     }
   };
 
-  const filteredChildren = children.filter(e => {
-    if (showHidden) return true;
-    if (e.name.startsWith(".")) return false;
-    if (fileHandlerSettings.hiddenNames.includes(e.name)) return false;
-    return true;
-  });
+  const filteredChildren = children.filter((entry) =>
+    shouldShowFileEntry(entry.name, showHidden, fileHandlerSettings.hiddenNames),
+  );
 
   return (
     <li>
       {isRenaming ? (
-        <div className="file-panel__new-input-container" style={{ paddingLeft: `${depth * 12 + 12}px` }}>
+        <div className="file-panel__new-input-container" style={entryIndentStyle(depth)}>
           {isDir ? <FolderIcon /> : <FileIcon />}
           <input
             autoFocus
@@ -273,8 +270,8 @@ function FileTreeItem({
           data-file-row="true"
           data-path={fullPath}
           data-is-dir={isDir ? "true" : "false"}
-          className={`file-panel__entry ${isDir ? "file-panel__entry--dir" : "file-panel__entry--file"}${active ? " file-panel__entry--active" : ""}${shared ? " file-panel__entry--shared" : ""}`}
-          style={{ paddingLeft: `${depth * 12 + 12}px` }}
+          className={fileRowClassName(isDir, active, shared)}
+          style={entryIndentStyle(depth)}
         >
           <button
             type="button"
@@ -395,12 +392,19 @@ export default function FilePanel({
   const [peerSignatures, setPeerSignatures] = useState<Set<string>>(new Set());
   const rootRef = useRef<HTMLDivElement>(null);
 
-  const refresh = () => {
-    if (path) ListDir(path).then(res => setEntries(res || []));
-  };
+  async function reloadEntries() {
+    if (!path) {
+      setEntries([]);
+      return [];
+    }
+    const result = await ListDir(path);
+    const nextEntries = result || [];
+    setEntries(nextEntries);
+    return nextEntries;
+  }
 
   useEffect(() => {
-    refresh();
+    void reloadEntries();
   }, [path, refreshToken]);
 
   useEffect(() => {
@@ -415,7 +419,7 @@ export default function FilePanel({
     }
     ListRecursiveFiles(peerPath).then((res) => {
       if (cancelled) return;
-      setPeerSignatures(new Set((res || []).map((entry) => `${basename(entry.name)}::${entry.size}`)));
+      setPeerSignatures(new Set((res || []).map((entry) => createPeerSignature(basename(entry.name), entry.size))));
     });
     return () => {
       cancelled = true;
@@ -445,8 +449,7 @@ export default function FilePanel({
   useEffect(() => {
     function handleWindowKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
-      const tagName = target?.tagName?.toLowerCase();
-      if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+      if (isEditableTarget(target)) {
         return;
       }
 
@@ -505,12 +508,9 @@ export default function FilePanel({
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
   }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange, selectedPath, onNavigate, onSelectFile]);
 
-  const filteredEntries = entries.filter(e => {
-    if (showHidden) return true;
-    if (e.name.startsWith(".")) return false;
-    if (fileHandlerSettings.hiddenNames.includes(e.name)) return false;
-    return true;
-  });
+  const filteredEntries = entries.filter((entry) =>
+    shouldShowFileEntry(entry.name, showHidden, fileHandlerSettings.hiddenNames),
+  );
   async function submitNewItem() {
     if (!newName.trim()) {
       setCreatingKind(null);
@@ -521,7 +521,7 @@ export default function FilePanel({
       ? await MkDir(fullPath)
       : await WriteTextFile(fullPath, "");
     if (ok) {
-      refresh();
+      await reloadEntries();
       onCursorChange(fullPath);
       if (creatingKind !== "folder") {
         onSelectFile(fullPath);
@@ -544,7 +544,7 @@ export default function FilePanel({
     const newPath = joinPath(dirname(renamingPath), renameValue.trim());
     const ok = await Rename(renamingPath, newPath);
     if (ok) {
-      refresh();
+      await reloadEntries();
       onSelectFile(newPath);
       onCursorChange(newPath);
     }
@@ -636,8 +636,7 @@ export default function FilePanel({
       return;
     }
     const target = e.target as HTMLElement | null;
-    const tagName = target?.tagName?.toLowerCase();
-    if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+    if (isEditableTarget(target)) {
       return;
     }
     const key = e.key.toLowerCase();

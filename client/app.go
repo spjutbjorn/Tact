@@ -908,7 +908,7 @@ func summarizeUsageOutput(output string) string {
 			continue
 		}
 		lower := strings.ToLower(line)
-		if lower == "usage" || lower == "användning" {
+		if lower == "usage" {
 			continue
 		}
 		if strings.Contains(lower, "limit") || strings.Contains(lower, "quota") || strings.Contains(lower, "token") || strings.Contains(lower, "usage") || strings.Contains(lower, "context") || strings.Contains(lower, "resets") || strings.Contains(lower, "remaining") || strings.Contains(lower, "cost") {
@@ -932,11 +932,11 @@ func normalizeUsageLine(line string) string {
 		pattern *regexp.Regexp
 		replace string
 	}{
-		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*left\b`), "$1% kvar"},
-		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*used\b`), "$1% använt"},
-		{regexp.MustCompile(`(?i)\bresets\b`), "återställs"},
-		{regexp.MustCompile(`(?i)\bremaining\b`), "kvar"},
-		{regexp.MustCompile(`(?i)^\s*(usage|användning)\s*:?\s*`), ""},
+		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*left\b`), "$1% left"},
+		{regexp.MustCompile(`(?i)\b([0-9]+(?:\.[0-9]+)?)%\s*used\b`), "$1% used"},
+		{regexp.MustCompile(`(?i)\bresets\b`), "resets"},
+		{regexp.MustCompile(`(?i)\bremaining\b`), "remaining"},
+		{regexp.MustCompile(`(?i)^\s*usage\s*:?\s*`), ""},
 	}
 	out := line
 	for _, repl := range replacements {

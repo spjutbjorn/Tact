@@ -125,45 +125,50 @@ export const DEFAULT_TEXT_EXTENSIONS: readonly string[] = [
 
 const SETTINGS_KEY = "tact.fileHandlerSettings";
 
-export function loadFileHandlerSettings(): FileHandlerSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<FileHandlerSettings>;
-      const settings: FileHandlerSettings = {
-        version: parsed.version ?? 0,
-        textExtensions: Array.isArray(parsed.textExtensions) ? parsed.textExtensions : [...DEFAULT_TEXT_EXTENSIONS],
-        hiddenNames: Array.isArray(parsed.hiddenNames) ? parsed.hiddenNames : [...DEFAULT_HIDDEN_NAMES],
-        highlightSharedFiles: parsed.highlightSharedFiles ?? true,
-      };
-
-      // Migration to version 5: Add shared-file highlighting.
-      if (settings.version < 5) {
-        const current = new Set(settings.hiddenNames);
-        
-        // Add all current defaults (including Volumes)
-        DEFAULT_HIDDEN_NAMES.forEach(name => current.add(name));
-        
-        // Ensure Applications is visible if it was explicitly removed in v3
-        current.delete("Applications");
-        
-        settings.hiddenNames = Array.from(current).sort();
-        settings.highlightSharedFiles = parsed.highlightSharedFiles ?? true;
-        settings.version = 5;
-        saveFileHandlerSettings(settings);
-      }
-
-      return settings;
-    }
-  } catch {
-    // ignore
-  }
-  return { 
+function createDefaultFileHandlerSettings(): FileHandlerSettings {
+  return {
     version: CURRENT_VERSION,
     textExtensions: [...DEFAULT_TEXT_EXTENSIONS],
     hiddenNames: [...DEFAULT_HIDDEN_NAMES],
     highlightSharedFiles: true,
   };
+}
+
+function migrateHiddenNames(hiddenNames: string[]): string[] {
+  const current = new Set(hiddenNames);
+  DEFAULT_HIDDEN_NAMES.forEach((name) => current.add(name));
+  current.delete("Applications");
+  return Array.from(current).sort();
+}
+
+function normalizeFileHandlerSettings(parsed: Partial<FileHandlerSettings>): FileHandlerSettings {
+  const settings: FileHandlerSettings = {
+    version: parsed.version ?? 0,
+    textExtensions: Array.isArray(parsed.textExtensions) ? parsed.textExtensions : [...DEFAULT_TEXT_EXTENSIONS],
+    hiddenNames: Array.isArray(parsed.hiddenNames) ? parsed.hiddenNames : [...DEFAULT_HIDDEN_NAMES],
+    highlightSharedFiles: parsed.highlightSharedFiles ?? true,
+  };
+
+  if (settings.version < 5) {
+    settings.hiddenNames = migrateHiddenNames(settings.hiddenNames);
+    settings.highlightSharedFiles = parsed.highlightSharedFiles ?? true;
+    settings.version = 5;
+    saveFileHandlerSettings(settings);
+  }
+
+  return settings;
+}
+
+export function loadFileHandlerSettings(): FileHandlerSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      return normalizeFileHandlerSettings(JSON.parse(raw) as Partial<FileHandlerSettings>);
+    }
+  } catch {
+    // ignore
+  }
+  return createDefaultFileHandlerSettings();
 }
 
 export function saveFileHandlerSettings(settings: FileHandlerSettings): void {
