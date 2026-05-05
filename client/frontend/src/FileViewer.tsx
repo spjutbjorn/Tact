@@ -3,7 +3,7 @@ import { renderAsync } from "docx-preview";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Editor from "@monaco-editor/react";
-import { PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir } from "./wails";
+import { PreparePdfThumb, PrepareVideoPath, ReadBinaryFile, ReadDocxFile, ReadPandocHtml, ReadTextFile, WriteTextFile, ListDir, WriteThumb } from "./wails";
 import { basename, dirname, isMarkdownPath, isJsonPath, joinPath, extname } from "./path";
 import { type FileHandlerSettings, getFileHandler, imageMime, videoMime, audioMime } from "./fileHandlers";
 
@@ -50,6 +50,13 @@ function binaryToObjectUrl(base64: string, mime: string): string {
   const buf = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
   return URL.createObjectURL(new Blob([buf], { type: mime }));
+}
+
+function thumbCachePath(sourcePath: string): string {
+  const slash = sourcePath.lastIndexOf("/");
+  const dir = slash >= 0 ? sourcePath.slice(0, slash) : "";
+  const name = slash >= 0 ? sourcePath.slice(slash + 1) : sourcePath;
+  return `${dir}/.thumbnails/${name}.jpg`;
 }
 
 function fileUrl(path: string): string {
@@ -179,9 +186,7 @@ function useVideoSource(path: string, mime: string): string | null {
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => {
-    if (previousUrl.current?.startsWith("blob:")) {
-      URL.revokeObjectURL(previousUrl.current);
-    }
+    if (previousUrl.current?.startsWith("blob:")) URL.revokeObjectURL(previousUrl.current);
     previousUrl.current = null;
     setSrc(null);
 
@@ -192,15 +197,13 @@ function useVideoSource(path: string, mime: string): string | null {
 
     ReadBinaryFile(path).then((base64) => {
       if (!base64) return;
-      const nextUrl = binaryToObjectUrl(base64, mime);
-      previousUrl.current = nextUrl;
-      setSrc(nextUrl);
+      const url = binaryToObjectUrl(base64, mime);
+      previousUrl.current = url;
+      setSrc(url);
     });
 
     return () => {
-      if (previousUrl.current?.startsWith("blob:")) {
-        URL.revokeObjectURL(previousUrl.current);
-      }
+      if (previousUrl.current?.startsWith("blob:")) URL.revokeObjectURL(previousUrl.current);
       previousUrl.current = null;
     };
   }, [path, mime]);
@@ -208,11 +211,116 @@ function useVideoSource(path: string, mime: string): string | null {
   return src;
 }
 
+function useVideoThumbnail(path: string, mime: string): string | null {
+  const [poster, setPoster] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPoster(null);
+    let cancelled = false;
+    let blobUrl: string | null = null;
+    const cached = thumbCachePath(path);
+
+    ReadBinaryFile(cached).then((b64) => {
+      if (cancelled) return;
+      if (b64) {
+        setPoster(`data:image/jpeg;base64,${b64.replace(/\s/g, "")}`);
+        return;
+      }
+
+      ReadBinaryFile(path).then((base64) => {
+        if (cancelled || !base64) return;
+        try {
+          blobUrl = binaryToObjectUrl(base64, mime);
+        } catch {
+          return;
+        }
+
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "metadata";
+        video.addEventListener("loadedmetadata", () => {
+          if (!cancelled) video.currentTime = video.duration > 0 ? video.duration / 2 : 0;
+        });
+        video.addEventListener("seeked", () => {
+          if (cancelled) return;
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth || 320;
+          canvas.height = video.videoHeight || 180;
+          canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          try {
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+            const b64thumb = dataUrl.split(",")[1];
+            if (b64thumb) WriteThumb(cached, b64thumb).catch(() => {});
+            if (!cancelled) setPoster(dataUrl);
+          } catch {
+          }
+          video.src = "";
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+            blobUrl = null;
+          }
+        });
+        video.addEventListener("error", () => {
+          video.src = "";
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+            blobUrl = null;
+          }
+        });
+        video.src = blobUrl;
+      }).catch(() => {
+      });
+    }).catch(() => {
+    });
+
+    return () => {
+      cancelled = true;
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+        blobUrl = null;
+      }
+    };
+  }, [path, mime]);
+
+  return poster;
+}
+
+function usePdfThumbnail(path: string): string | null {
+  const [thumb, setThumb] = useState<string | null>(null);
+
+  useEffect(() => {
+    setThumb(null);
+    let cancelled = false;
+
+    PreparePdfThumb(path).then((thumbPath) => {
+      if (cancelled || !thumbPath) return;
+      ReadBinaryFile(thumbPath).then((b64) => {
+        if (cancelled || !b64) return;
+        setThumb(`data:image/jpeg;base64,${b64.replace(/\s/g, "")}`);
+      }).catch(() => {
+      });
+    }).catch(() => {
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  return thumb;
+}
+
 function PdfViewer({ path }: { path: string }) {
   const url = useBinaryObjectUrl(path, "application/pdf");
+  const thumb = usePdfThumbnail(path);
 
-  if (!url) return <div className="viewer-loading">Loading…</div>;
-  return <embed src={url} type="application/pdf" className="pdf-viewer" />;
+  if (!url && !thumb) return <div className="viewer-loading">Loading…</div>;
+  return (
+    <div className="pdf-viewer">
+      <embed src={url ?? undefined} type="application/pdf" className="pdf-viewer__embed" />
+      {thumb && <img src={thumb} alt={basename(path)} className="pdf-viewer__thumb" draggable={false} />}
+    </div>
+  );
 }
 
 function HtmlDocumentViewer({ path }: { path: string }) {
@@ -496,32 +604,68 @@ function VideoViewer({
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
 }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [fallbackUsed, setFallbackUsed] = useState(false);
-  const blobUrl = useVideoSource(path, mime);
+  const src = useVideoSource(path, mime);
+  const poster = useVideoThumbnail(path, mime);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const { onKeyDown } = useMediaNavigation(path, onSelectFile);
   useFullscreenKeys(isFullscreen, onToggleFullscreen, onSelectFile, path, frameRef);
 
   useEffect(() => {
-    setFallbackUsed(false);
-    if (mime === "video/x-matroska") {
-      setSrc(fileUrl(path));
-      return;
-    }
-    setSrc(blobUrl);
-  }, [path, mime, blobUrl]);
+    const video = videoRef.current;
+    if (!video) return;
 
-  async function handleError() {
-    if (mime !== "video/x-matroska" || fallbackUsed) return;
-    setFallbackUsed(true);
-    const prepared = await PrepareVideoPath(path);
-    if (prepared) {
-      setSrc(fileUrl(prepared));
-    }
-  }
+    let restarting = false;
 
-  if (!src) return <div className="viewer-loading">Loading…</div>;
+    const restartPlayback = (force = false) => {
+      if (!isFullscreen || restarting) return;
+      restarting = true;
+      if (force) {
+        video.pause();
+      }
+      try {
+        video.currentTime = 0;
+      } catch {
+      }
+      if (force) {
+        try {
+          video.load();
+        } catch {
+        }
+      }
+      const playPromise = video.play();
+      if (playPromise) {
+        playPromise.catch(() => {});
+        playPromise.finally(() => {
+          restarting = false;
+        });
+      } else {
+        restarting = false;
+      }
+    };
+
+    const onEnded = () => restartPlayback(true);
+    const onTimeUpdate = () => {
+      if (!isFullscreen || video.duration <= 0) return;
+      if (video.duration - video.currentTime < 0.5) restartPlayback(true);
+    };
+    const poll = window.setInterval(() => {
+      if (!isFullscreen || video.duration <= 0 || restarting) return;
+      if (video.ended || video.currentTime >= video.duration - 0.5) {
+        restartPlayback(true);
+      }
+    }, 500);
+
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("timeupdate", onTimeUpdate);
+    return () => {
+      window.clearInterval(poll);
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+    };
+  }, [isFullscreen, src]);
+
+  if (!src && !poster) return <div className="viewer-loading">Loading…</div>;
   return (
     <div
       ref={frameRef}
@@ -530,8 +674,8 @@ function VideoViewer({
       onMouseDownCapture={() => frameRef.current?.focus()}
       onKeyDown={isFullscreen ? undefined : onKeyDown}
     >
-      <div className="media-viewer__surface">
-        <video src={src} controls className="video-viewer__video" onError={handleError}>
+      <div className="media-viewer__surface video-viewer__surface">
+        <video ref={videoRef} src={src ?? undefined} poster={poster ?? undefined} controls preload="metadata" className="video-viewer__video">
           <track kind="captions" label="English captions" src="data:text/vtt,WEBVTT%0A%0A" default />
         </video>
       </div>

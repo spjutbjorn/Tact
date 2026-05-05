@@ -3,6 +3,8 @@
 import {main} from '../models';
 import {backend} from '../models';
 
+export function CleanThumbs(arg1:string,arg2:Array<string>):Promise<void>;
+
 export function CloseTerminalSession(arg1:string):Promise<boolean>;
 
 export function CopyPath(arg1:string,arg2:string):Promise<boolean>;
@@ -73,6 +75,8 @@ export function PathIsDir(arg1:string):Promise<boolean>;
 
 export function Ping():Promise<string>;
 
+export function PreparePdfThumb(arg1:string):Promise<string>;
+
 export function PrepareVideoPath(arg1:string):Promise<string>;
 
 export function ReadBinaryFile(arg1:string):Promise<string>;
@@ -100,3 +104,5 @@ export function TerminalProfiles():Promise<Array<backend.TerminalProfile>>;
 export function TerminalSessions():Promise<Array<main.TerminalSessionInfo>>;
 
 export function WriteTextFile(arg1:string,arg2:string):Promise<boolean>;
+
+export function WriteThumb(arg1:string,arg2:string):Promise<boolean>;

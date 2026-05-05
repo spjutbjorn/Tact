@@ -56,6 +56,7 @@ interface WailsApp {
   WriteTextFile: (path: string, content: string) => Promise<boolean>;
   ReadBinaryFile: (path: string) => Promise<string>;
   PrepareVideoPath: (path: string) => Promise<string>;
+  PreparePdfThumb: (path: string) => Promise<string>;
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
   PathIsDir: (path: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
@@ -78,6 +79,8 @@ interface WailsApp {
   GitDiff: (path: string) => Promise<string>;
   GitShow: (revision: string, path: string) => Promise<string>;
   MkDir: (path: string) => Promise<boolean>;
+  WriteThumb: (thumbPath: string, base64Jpeg: string) => Promise<boolean>;
+  CleanThumbs: (thumbDir: string, sourceNames: string[]) => Promise<void>;
   MemoryUsage: () => Promise<Record<string, number>>;
   OllamaChat: (chatId: string, messages: { role: string; content: string }[], contextFiles: string[], mode: string, currentPath: string, focusFiles: string[]) => Promise<void>;
   GemmaMemory: () => Promise<{ used: number; total: number }>;
@@ -170,6 +173,9 @@ export const ReadBinaryFile = (path: string): Promise<string> =>
 export const PrepareVideoPath = (path: string): Promise<string> =>
   app()?.PrepareVideoPath(path) ?? Promise.resolve("");
 
+export const PreparePdfThumb = (path: string): Promise<string> =>
+  app()?.PreparePdfThumb(path) ?? Promise.resolve("");
+
 export const Rename = (oldPath: string, newPath: string): Promise<boolean> =>
   app()?.Rename(oldPath, newPath) ?? Promise.resolve(false);
 
@@ -238,6 +244,12 @@ export const WindowToggleMaximise = (): void =>
 
 export const MkDir = (path: string): Promise<boolean> =>
   app()?.MkDir(path) ?? Promise.resolve(false);
+
+export const WriteThumb = (thumbPath: string, base64Jpeg: string): Promise<boolean> =>
+  app()?.WriteThumb(thumbPath, base64Jpeg) ?? Promise.resolve(false);
+
+export const CleanThumbs = (thumbDir: string, sourceNames: string[]): Promise<void> =>
+  app()?.CleanThumbs(thumbDir, sourceNames) ?? Promise.resolve();
 
 export const MemoryUsage = (): Promise<Record<string, number>> =>
   app()?.MemoryUsage() ?? Promise.resolve({ used: 0, total: 0 });

@@ -4,7 +4,8 @@ import { isZipArchivePath, joinPath } from "./path";
 import { FileIcon, FolderIcon } from "./fileIcons";
 import { type FileHandlerSettings } from "./fileHandlers";
 import { createPeerSignature, entryIndentStyle, fileRowClassName, formatFileSize, shouldShowFileEntry } from "./filePanelHelpers";
-import { ChevronIcon, DeleteIcon, RenameIcon } from "./FilePanelIcons";
+import { AddToMediaIcon, ChevronIcon, DeleteIcon, RenameIcon } from "./FilePanelIcons";
+import { addToActiveProject } from "./mediaProjects";
 
 export interface FileTreeItemProps {
   path: string;
@@ -103,6 +104,12 @@ export default function FileTreeItem({
           data-is-dir={isDir ? "true" : "false"}
           className={fileRowClassName(isDir, active, shared)}
           style={entryIndentStyle(depth)}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("tact/path", fullPath);
+            e.dataTransfer.setData("tact/is-dir", isDir ? "true" : "false");
+            e.dataTransfer.effectAllowed = "copy";
+          }}
         >
           <button
             type="button"
@@ -142,6 +149,18 @@ export default function FileTreeItem({
             }}
           >
             <RenameIcon />
+          </button>
+          <button
+            type="button"
+            className="file-panel__small-btn"
+            title="Lägg till i mediapaket"
+            onMouseDown={(event) => { event.stopPropagation(); }}
+            onClick={(event) => {
+              event.stopPropagation();
+              addToActiveProject(fullPath, isDir);
+            }}
+          >
+            <AddToMediaIcon />
           </button>
           <button
             type="button"

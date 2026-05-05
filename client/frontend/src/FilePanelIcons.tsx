@@ -37,6 +37,15 @@ export function NewFolderIcon() {
   );
 }
 
+export function AddToMediaIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+      <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h3.086a1.5 1.5 0 0 1 1.06.44l.915.914A1.5 1.5 0 0 0 8.62 3.8l.44-.44A1.5 1.5 0 0 1 10.12 3H13.5A1.5 1.5 0 0 1 15 4.5V6a.5.5 0 0 1-1 0V4.5a.5.5 0 0 0-.5-.5h-3.38a.5.5 0 0 0-.354.146l-.44.44A2.5 2.5 0 0 1 7.56 5.3L6.646 4.386A.5.5 0 0 0 6.293 4H2.5a.5.5 0 0 0-.5.5V12a.5.5 0 0 0 .5.5H6a.5.5 0 0 1 0 1H2.5A1.5 1.5 0 0 1 1 12V3.5z"/>
+      <path d="M11.5 8a.5.5 0 0 1 .5.5v2h2a.5.5 0 0 1 0 1h-2v2a.5.5 0 0 1-1 0v-2H9a.5.5 0 0 1 0-1h2v-2a.5.5 0 0 1 .5-.5z"/>
+    </svg>
+  );
+}
+
 export function DeleteIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">

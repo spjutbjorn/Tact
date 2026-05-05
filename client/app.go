@@ -1474,8 +1474,71 @@ func (a *App) PrepareVideoPath(path string) string {
 	return outPath
 }
 
+func (a *App) PreparePdfThumb(path string) string {
+	if !strings.EqualFold(filepath.Ext(path), ".pdf") {
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return ""
+	}
+
+	thumbDir := filepath.Join(filepath.Dir(path), ".thumbnails")
+	if err := os.MkdirAll(thumbDir, 0755); err != nil {
+		return ""
+	}
+
+	outPath := filepath.Join(thumbDir, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))+".jpg")
+	if cachedInfo, err := os.Stat(outPath); err == nil && cachedInfo.Size() > 0 && !cachedInfo.ModTime().Before(info.ModTime()) {
+		return outPath
+	}
+
+	if _, err := exec.LookPath("sips"); err != nil {
+		return ""
+	}
+
+	cmd := exec.Command(
+		"sips",
+		"-s", "format", "jpeg",
+		path,
+		"--out", outPath,
+	)
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return outPath
+}
+
 func (a *App) Rename(oldPath, newPath string) bool {
 	return os.Rename(oldPath, newPath) == nil
+}
+
+func (a *App) WriteThumb(thumbPath string, base64Jpeg string) bool {
+	data, err := base64.StdEncoding.DecodeString(base64Jpeg)
+	if err != nil {
+		return false
+	}
+	if err := os.MkdirAll(filepath.Dir(thumbPath), 0755); err != nil {
+		return false
+	}
+	return os.WriteFile(thumbPath, data, 0644) == nil
+}
+
+func (a *App) CleanThumbs(thumbDir string, sourceNames []string) {
+	entries, err := os.ReadDir(thumbDir)
+	if err != nil {
+		return
+	}
+	valid := make(map[string]bool, len(sourceNames))
+	for _, name := range sourceNames {
+		valid[name+".jpg"] = true
+	}
+	for _, entry := range entries {
+		if !valid[entry.Name()] {
+			os.Remove(filepath.Join(thumbDir, entry.Name()))
+		}
+	}
 }
 
 func (a *App) PathIsDir(path string) bool {

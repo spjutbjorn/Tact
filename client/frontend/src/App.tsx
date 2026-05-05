@@ -10,8 +10,9 @@ import TerminalPanel from "./TerminalPanel";
 import TerminalView from "./TerminalView";
 import Settings from "./Settings";
 import Shortcuts from "./Shortcuts";
+import MediaPanel from "./MediaPanel";
 import { CopyPath, DeleteFile, GetCwd, GitRoot, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput } from "./wails";
-import { basename, isMarkdownPath } from "./path";
+import { basename, dirname, isMarkdownPath } from "./path";
 import { terminalRegistry } from "./terminalRegistry";
 import { type FileHandlerSettings, loadFileHandlerSettings, saveFileHandlerSettings } from "./fileHandlers";
 import { DISABLED_PROFILES_KEY, PANEL_WIDTH_KEY, isMediaPath, loadDisabledProfiles, loadPanelWidth } from "./appState";
@@ -35,6 +36,7 @@ export default function App() {
   const [activeFileSide, setActiveFileSide] = useState<FileSide>("right");
   const [leftMirrorsRight, setLeftMirrorsRight] = useState(true);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileViewerOrigin, setFileViewerOrigin] = useState<string>("files");
   const [leftPath, setLeftPath] = useState("");
   const [rightPath, setRightPath] = useState("");
   const [leftCursorPath, setLeftCursorPath] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function App() {
   const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
   const [mediaFullscreen, setMediaFullscreen] = useState(false);
+  const [mediaSidebarOpen, setMediaSidebarOpen] = useState(true);
   const [gitRoot, setGitRoot] = useState("");
   const {
     terminalProfiles,
@@ -170,6 +173,15 @@ export default function App() {
     }
 
     setTerminalSidebarOpen(false);
+    if (id === "media") {
+      if (activePanel !== "media") {
+        setMediaSidebarOpen(true);
+      } else {
+        setMediaSidebarOpen((prev) => !prev);
+      }
+      setActivePanel("media");
+      return;
+    }
     setActivePanel((prev) => {
       const next = prev === id ? null : id;
       if (id === "files" && next !== "files") {
@@ -306,6 +318,7 @@ export default function App() {
 
   const handleOpenFile = (side: FileSide, file: string) => {
     setSelectedFile(file);
+    setFileViewerOrigin("files");
     setIsDirty(false);
     if (isMarkdownPath(file)) {
       setPreviewMode(true);
@@ -339,6 +352,7 @@ export default function App() {
   const showSettings = activePanel === "settings";
   const showShortcuts = activePanel === "shortcuts";
   const showFiles = activePanel === "files";
+  const showMedia = activePanel === "media";
   const showGit = activePanel === "git";
   const showGemma = activePanel === "gemma";
   const showTerminals = activePanel === "terminals";
@@ -415,6 +429,23 @@ export default function App() {
             />
           ) : showShortcuts ? (
             <Shortcuts />
+          ) : showMedia ? (
+            <MediaPanel
+              onSelectFile={(file) => {
+                handleSelectFile(file);
+                setFileViewerOrigin("media");
+                setActivePanel("files");
+                const dir = dirname(file);
+                setRightPath(dir);
+                setRightCursorPath(file);
+                setActiveFileSide("right");
+                setPath(dir);
+              }}
+              width={panelWidth}
+              onWidthChange={setPanelWidth}
+              cursorPath={activeFileSide === "left" ? leftCursorPath : rightCursorPath}
+              sidebarOpen={mediaSidebarOpen}
+            />
           ) : showTerminals ? (
             <TerminalView
               session={activeTerminalSession}
@@ -436,7 +467,10 @@ export default function App() {
               key={selectedFile} 
               path={selectedFile} 
               onSelectFile={handleSelectFile}
-              onExitToFolderView={() => setActivePanel("files")}
+              onExitToFolderView={() => {
+                setActivePanel(fileViewerOrigin);
+                setFileViewerOrigin("files");
+              }}
               previewMode={previewMode}
               onDirtyChange={setIsDirty}
               isFullscreen={mediaFullscreen}

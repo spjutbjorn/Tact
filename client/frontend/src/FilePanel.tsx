@@ -6,7 +6,8 @@ import { createPeerSignature, formatFileSize, isEditableTarget, shouldShowFileEn
 import FilePanelVolumePicker from "./FilePanelVolumePicker";
 import FileTreeItem from "./FileTreeItem";
 import { FileIcon, FolderIcon } from "./fileIcons";
-import { NewFileIcon, NewFolderIcon, RenameIcon } from "./FilePanelIcons";
+import { AddToMediaIcon, NewFileIcon, NewFolderIcon, RenameIcon } from "./FilePanelIcons";
+import { addFilesToActiveProject } from "./mediaProjects";
 
 type FileSide = "left" | "right";
 
@@ -385,6 +386,9 @@ export default function FilePanel({
           </button>
           <button className="file-panel__new-btn" onClick={() => { setCreatingKind("file"); setNewName(""); }} title="New File">
             <NewFileIcon />
+          </button>
+          <button className="file-panel__new-btn" onClick={() => { ListRecursiveFiles(path).then((entries) => addFilesToActiveProject(entries.filter((e) => !e.isDir).map((e) => e.name))); }} title="Lägg till alla filer rekursivt i mediapaket">
+            <AddToMediaIcon />
           </button>
         </div>
       </div>
