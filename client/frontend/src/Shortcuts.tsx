@@ -14,13 +14,18 @@ interface Group {
 
 const GROUPS: Group[] = [
   {
+    title: "Shared file actions",
+    rows: [
+      { keys: [Cmd, "S"], label: "Save current file" },
+      { keys: ["E"], label: "Go up one folder" },
+    ],
+  },
+  {
     title: "Folder panel — left",
     rows: [
       { keys: ["W"], label: "Move cursor up" },
       { keys: ["S"], label: "Move cursor down" },
-      { keys: ["E"], label: "Go up one folder" },
       { keys: ["Enter", "Q"], label: "Open file or folder" },
-      { keys: [Cmd, "S"], label: "Save current file" },
       { keys: ["D"], label: "Copy to other panel", note: "Split view" },
       { keys: ["A"], label: "Move to other panel", note: "Split view" },
     ],
@@ -31,7 +36,6 @@ const GROUPS: Group[] = [
       { keys: ["↑"], label: "Move cursor up" },
       { keys: ["↓"], label: "Move cursor down" },
       { keys: ["Enter", "Q"], label: "Open file or folder" },
-      { keys: [Cmd, "S"], label: "Save current file" },
       { keys: ["←"], label: "Copy to other panel", note: "Split view" },
       { keys: ["→"], label: "Move to other panel", note: "Split view" },
     ],
@@ -46,10 +50,10 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Image & video viewer",
+    title: "Media viewer",
     rows: [
-      { keys: ["↑", "↓"], label: "Navigate between files" },
-      { keys: ["←", "→"], label: "Navigate between images" },
+      { keys: ["←", "→"], label: "Navigate between media" },
+      { keys: ["↑", "↓"], label: "Scroll in fullscreen", note: "Fullscreen only" },
       { keys: ["Esc"], label: "Exit fullscreen" },
     ],
   },

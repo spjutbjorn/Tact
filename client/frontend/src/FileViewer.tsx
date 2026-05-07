@@ -364,9 +364,19 @@ function ImageViewer({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const offsetRef = useRef({ x: 0, y: 0 });
 
   const { onKeyDown } = useMediaNavigation(path, onSelectFile);
   useFullscreenKeys(isFullscreen, onToggleFullscreen, onSelectFile, path, frameRef);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -377,18 +387,20 @@ function ImageViewer({
         e.preventDefault();
         const delta = -e.deltaY;
         const factor = Math.pow(1.1, delta / 100);
-        const nextZoom = Math.min(Math.max(0.1, zoom * factor), 10);
+        const currentZoom = zoomRef.current;
+        const currentOffset = offsetRef.current;
+        const nextZoom = Math.min(Math.max(0.1, currentZoom * factor), 10);
 
-        if (nextZoom !== zoom) {
+        if (nextZoom !== currentZoom) {
           const rect = frame.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
+          const mouseX = e.clientX - rect.left - rect.width / 2;
+          const mouseY = e.clientY - rect.top - rect.height / 2;
 
-          const zoomPointX = (mouseX - rect.width / 2 - offset.x) / zoom;
-          const zoomPointY = (mouseY - rect.height / 2 - offset.y) / zoom;
+          const contentX = (mouseX - currentOffset.x) / currentZoom;
+          const contentY = (mouseY - currentOffset.y) / currentZoom;
 
-          const nextOffsetX = mouseX - rect.width / 2 - zoomPointX * nextZoom;
-          const nextOffsetY = mouseY - rect.height / 2 - zoomPointY * nextZoom;
+          const nextOffsetX = mouseX - contentX * nextZoom;
+          const nextOffsetY = mouseY - contentY * nextZoom;
 
           setZoom(nextZoom);
           setOffset({ x: nextOffsetX, y: nextOffsetY });
@@ -398,7 +410,7 @@ function ImageViewer({
 
     frame.addEventListener("wheel", handleWheel, { passive: false });
     return () => frame.removeEventListener("wheel", handleWheel);
-  }, [zoom, offset]);
+  }, []);
 
   useEffect(() => {
     setZoom(1);

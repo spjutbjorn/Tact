@@ -137,6 +137,18 @@ export default function FilePanel({
         window.dispatchEvent(new Event("tact:save"));
         return;
       }
+      if (key === "enter" || key === "q") {
+        if (path === "/" && !selectedPath) {
+          e.preventDefault();
+          rootRef.current?.querySelector<HTMLButtonElement>('[data-volume-picker="true"]')?.click();
+          focusPanel();
+          return;
+        }
+        e.preventDefault();
+        openSelectedPath();
+        focusPanel();
+        return;
+      }
       if (side === "left") {
         if (key === "w") {
           e.preventDefault();
@@ -177,11 +189,6 @@ export default function FilePanel({
         if (dualMode && key === "arrowright") {
           e.preventDefault();
           onMoveSelection();
-          return;
-        }
-        if (key === "enter" || key === "q") {
-          e.preventDefault();
-          openSelectedPath();
           return;
         }
       }

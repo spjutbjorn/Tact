@@ -2788,6 +2788,12 @@
   font-style: italic;
 }
 
+.media-pkg__loading {
+  padding: var(--space-md);
+  color: var(--text-dim);
+  font-size: var(--size-sm);
+}
+
 .media-pkg__name-input {
   background: var(--bg-input);
   border: 1px solid var(--border-main);
@@ -2901,12 +2907,15 @@
 
 .media-pkg__sidebar-header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .media-pkg__sidebar-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
 }
 

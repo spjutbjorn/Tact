@@ -1,17 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { PreparePdfThumb, PrepareVideoPath, ReadBinaryFile, WriteThumb } from "./wails";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
+import { PathIsDir, PreparePdfThumb, PrepareVideoPath, ReadBinaryFile } from "./wails";
 import { imageMime, videoMime } from "./fileHandlers";
 import { basename, isPdfPath } from "./path";
 import {
   type MediaItem,
-  type MediaSnapshot,
+  type MediaWorkspaceSummary,
   MEDIA_BATCH_EVENT,
-  MEDIA_CHANGED_EVENT,
-  loadItems,
-  loadSnapshots,
-  saveItems,
-  saveSnapshots,
   addToActiveProject,
+  clearActiveWorkspaceItems,
+  deleteMediaWorkspace,
+  createMediaWorkspace,
+  initializeMediaProjects,
+  mediaProjectsStore,
+  overwriteMediaWorkspace,
+  renameMediaWorkspace,
+  selectMediaWorkspace,
+  setActiveWorkspaceItems,
+  setActiveWorkspaceThumbnail,
+  subscribeMediaProjects,
 } from "./mediaProjects";
 
 const MIN_WIDTH = 120;
@@ -28,11 +34,8 @@ interface Props {
 
 // ── Thumbnail helpers ────────────────────────────────────────────────
 
-function thumbCachePath(sourcePath: string): string {
-  const slash = sourcePath.lastIndexOf("/");
-  const dir = slash >= 0 ? sourcePath.slice(0, slash) : "";
-  const name = slash >= 0 ? sourcePath.slice(slash + 1) : sourcePath;
-  return `${dir}/.thumbnails/${name}.jpg`;
+function toDataUrl(base64: string): string {
+  return `data:image/jpeg;base64,${base64.replace(/\s/g, "")}`;
 }
 
 function toObjectUrl(base64: string, mime: string): string {
@@ -45,7 +48,7 @@ function toObjectUrl(base64: string, mime: string): string {
 
 const ScrollRootContext = createContext<HTMLDivElement | null>(null);
 
-function useVisible(ref: React.RefObject<HTMLElement | null>): boolean {
+function useVisible(ref: RefObject<HTMLElement | null>): boolean {
   const [visible, setVisible] = useState(false);
   const root = useContext(ScrollRootContext);
   useEffect(() => {
@@ -61,6 +64,14 @@ function useVisible(ref: React.RefObject<HTMLElement | null>): boolean {
   return visible;
 }
 
+function useWorkspaceThumb(initialThumb?: string | null): [string | null, Dispatch<SetStateAction<string | null>>] {
+  const [src, setSrc] = useState<string | null>(initialThumb ? toDataUrl(initialThumb) : null);
+  useEffect(() => {
+    setSrc(initialThumb ? toDataUrl(initialThumb) : null);
+  }, [initialThumb]);
+  return [src, setSrc];
+}
+
 function PlayIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="media-panel__play-icon">
@@ -70,53 +81,75 @@ function PlayIcon() {
   );
 }
 
-function ImageThumb({ path }: { path: string }) {
-  const [src, setSrc] = useState<string | null>(null);
+function ImageThumb({ path, thumb, onThumb }: { path: string; thumb?: string | null; onThumb: (path: string, base64Jpeg: string) => void; }) {
+  const [src, setSrc] = useWorkspaceThumb(thumb);
   const [error, setError] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const visible = useVisible(ref);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || thumb) return;
     let cancelled = false;
-    let cacheUrl: string | null = null;
     let fullUrl: string | null = null;
     const mime = imageMime(path);
-    if (!mime) { setError(true); return; }
-    const cached = thumbCachePath(path);
+    if (!mime) {
+      setError(true);
+      return;
+    }
 
-    ReadBinaryFile(cached).then((b64) => {
-      if (cancelled) return;
-      if (b64) {
-        try { cacheUrl = toObjectUrl(b64, "image/jpeg"); setSrc(cacheUrl); } catch { setError(true); }
+    ReadBinaryFile(path).then((b64) => {
+      if (cancelled || !b64) {
+        if (!cancelled) setError(true);
         return;
       }
-      ReadBinaryFile(path).then((b64) => {
-        if (cancelled || !b64) { if (!cancelled) setError(true); return; }
-        try { fullUrl = toObjectUrl(b64, mime); } catch { setError(true); return; }
-        const img = new Image();
-        img.onload = () => {
-          if (cancelled) { URL.revokeObjectURL(fullUrl!); fullUrl = null; return; }
-          const scale = Math.min(1, THUMB_SIZE / Math.max(img.naturalWidth, img.naturalHeight, 1));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-          canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-          canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          URL.revokeObjectURL(fullUrl!); fullUrl = null;
-          try {
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-            const b64thumb = dataUrl.split(",")[1];
-            if (b64thumb) WriteThumb(cached, b64thumb).catch(() => {});
-            if (!cancelled) setSrc(dataUrl);
-          } catch { if (!cancelled) setError(true); }
-        };
-        img.onerror = () => { if (fullUrl) { URL.revokeObjectURL(fullUrl); fullUrl = null; } if (!cancelled) setError(true); };
-        img.src = fullUrl;
-      }).catch(() => { if (!cancelled) setError(true); });
-    }).catch(() => { if (!cancelled) setError(true); });
+      try {
+        fullUrl = toObjectUrl(b64, mime);
+      } catch {
+        if (!cancelled) setError(true);
+        return;
+      }
 
-    return () => { cancelled = true; if (cacheUrl) URL.revokeObjectURL(cacheUrl); if (fullUrl) URL.revokeObjectURL(fullUrl); };
-  }, [path, visible]);
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) {
+          if (fullUrl) URL.revokeObjectURL(fullUrl);
+          return;
+        }
+        const scale = Math.min(1, THUMB_SIZE / Math.max(img.naturalWidth, img.naturalHeight, 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        if (fullUrl) {
+          URL.revokeObjectURL(fullUrl);
+          fullUrl = null;
+        }
+        try {
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          const b64thumb = dataUrl.split(",")[1];
+          if (b64thumb) onThumb(path, b64thumb);
+          if (!cancelled) setSrc(dataUrl);
+        } catch {
+          if (!cancelled) setError(true);
+        }
+      };
+      img.onerror = () => {
+        if (fullUrl) {
+          URL.revokeObjectURL(fullUrl);
+          fullUrl = null;
+        }
+        if (!cancelled) setError(true);
+      };
+      img.src = fullUrl;
+    }).catch(() => {
+      if (!cancelled) setError(true);
+    });
+
+    return () => {
+      cancelled = true;
+      if (fullUrl) URL.revokeObjectURL(fullUrl);
+    };
+  }, [path, thumb, visible, onThumb]);
 
   return (
     <div ref={ref} className="media-panel__thumb media-panel__thumb--image">
@@ -127,100 +160,82 @@ function ImageThumb({ path }: { path: string }) {
   );
 }
 
-function useVideoThumbSrc(path: string, enabled: boolean): string | null {
-  const [src, setSrc] = useState<string | null>(null);
+function useVideoThumbSrc(path: string, enabled: boolean, thumb: string | null | undefined, onThumb: (path: string, base64Jpeg: string) => void): string | null {
+  const [src, setSrc] = useWorkspaceThumb(thumb);
   useEffect(() => {
-    if (!enabled || !path) return;
+    if (!enabled || thumb) return;
     let cancelled = false;
-    const cached = thumbCachePath(path);
-
-    ReadBinaryFile(cached).then((b64) => {
-      if (cancelled) return;
-      if (b64) {
-        setSrc("data:image/jpeg;base64," + b64.replace(/\s/g, ""));
-        return;
-      }
-
-      PrepareVideoPath(path).then((preparedPath) => {
-        if (cancelled || !preparedPath) return;
-        const preparedMime = preparedPath === path ? (videoMime(path) ?? "video/mp4") : "video/mp4";
-        ReadBinaryFile(preparedPath).then((videoB64) => {
-          if (cancelled || !videoB64) return;
-          let blobUrl: string | null = null;
-          try { blobUrl = toObjectUrl(videoB64, preparedMime); } catch { return; }
-          const video = document.createElement("video");
-          video.muted = true;
-          video.preload = "metadata";
-          video.addEventListener("loadedmetadata", () => { if (!cancelled) video.currentTime = video.duration > 0 ? video.duration / 2 : 0; });
-          video.addEventListener("seeked", () => {
-            if (cancelled) return;
-            const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth || 320;
-            canvas.height = video.videoHeight || 180;
-            canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
-            try {
-              const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
-              const b64thumb = dataUrl.split(",")[1];
-              if (b64thumb) WriteThumb(cached, b64thumb).catch(() => {});
-              if (!cancelled) setSrc(dataUrl);
-            } catch {
-            }
-            video.src = "";
-            if (blobUrl) {
-              URL.revokeObjectURL(blobUrl);
-              blobUrl = null;
-            }
-          });
-          video.addEventListener("error", () => {
-            video.src = "";
-            if (blobUrl) {
-              URL.revokeObjectURL(blobUrl);
-              blobUrl = null;
-            }
-          });
-          video.src = blobUrl;
-        }).catch(() => {});
-      }).catch(() => {});
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [path, enabled]);
-  return src;
-}
-
-function usePdfThumbSrc(path: string, enabled: boolean): string | null {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    if (!enabled || !path) return;
-    let cancelled = false;
-    const cached = thumbCachePath(path);
-
-    PreparePdfThumb(path).then((thumbPath) => {
-      if (cancelled || !thumbPath) return;
-      ReadBinaryFile(thumbPath).then((b64) => {
-        if (cancelled || !b64) return;
-        setSrc("data:image/jpeg;base64," + b64.replace(/\s/g, ""));
+    PrepareVideoPath(path).then((preparedPath) => {
+      if (cancelled || !preparedPath) return;
+      const preparedMime = preparedPath === path ? (videoMime(path) ?? "video/mp4") : "video/mp4";
+      ReadBinaryFile(preparedPath).then((videoB64) => {
+        if (cancelled || !videoB64) return;
+        let blobUrl: string | null = null;
+        try {
+          blobUrl = toObjectUrl(videoB64, preparedMime);
+        } catch {
+          return;
+        }
+        const video = document.createElement("video");
+        video.muted = true;
+        video.preload = "metadata";
+        video.addEventListener("loadedmetadata", () => {
+          if (!cancelled) video.currentTime = video.duration > 0 ? video.duration / 2 : 0;
+        });
+        video.addEventListener("seeked", () => {
+          if (cancelled) return;
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth || 320;
+          canvas.height = video.videoHeight || 180;
+          canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          try {
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+            const b64thumb = dataUrl.split(",")[1];
+            if (b64thumb) onThumb(path, b64thumb);
+            if (!cancelled) setSrc(dataUrl);
+          } catch {
+          }
+          video.src = "";
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+            blobUrl = null;
+          }
+        });
+        video.addEventListener("error", () => {
+          video.src = "";
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+            blobUrl = null;
+          }
+        });
+        video.src = blobUrl;
       }).catch(() => {});
     }).catch(() => {});
 
     return () => {
       cancelled = true;
     };
-  }, [path, enabled]);
+  }, [path, enabled, thumb, onThumb]);
   return src;
 }
 
-function VideoThumb({ path }: { path: string }) {
+function VideoThumb({
+  path,
+  thumb,
+  onThumb,
+}: {
+  path: string;
+  thumb?: string | null;
+  onThumb: (path: string, base64Jpeg: string) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const visible = useVisible(ref);
-  const thumb = useVideoThumbSrc(path, visible);
+  const poster = useVideoThumbSrc(path, visible, thumb, onThumb);
 
   return (
     <div ref={ref} className="media-panel__thumb media-panel__thumb--video">
-      {thumb
-        ? <><img src={thumb} alt="" className="media-panel__img" draggable={false} /><div className="media-panel__play-overlay"><PlayIcon /></div></>
+      {poster
+        ? <><img src={poster} alt="" className="media-panel__img" draggable={false} /><div className="media-panel__play-overlay"><PlayIcon /></div></>
         : <PlayIcon />}
     </div>
   );
@@ -235,15 +250,46 @@ function FileThumb({ name }: { name: string }) {
   );
 }
 
-function PdfThumb({ path }: { path: string }) {
+function usePdfThumbSrc(path: string, enabled: boolean, thumb: string | null | undefined, onThumb: (path: string, base64Jpeg: string) => void): string | null {
+  const [src, setSrc] = useWorkspaceThumb(thumb);
+  useEffect(() => {
+    if (!enabled || thumb) return;
+    let cancelled = false;
+    PreparePdfThumb(path).then((thumbPath) => {
+      if (cancelled || !thumbPath) return;
+      ReadBinaryFile(thumbPath).then((b64) => {
+        if (cancelled || !b64) return;
+        const dataUrl = toDataUrl(b64);
+        const b64thumb = dataUrl.split(",")[1];
+        if (b64thumb) onThumb(path, b64thumb);
+        if (!cancelled) setSrc(dataUrl);
+      }).catch(() => {});
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path, enabled, thumb, onThumb]);
+  return src;
+}
+
+function PdfThumb({
+  path,
+  thumb,
+  onThumb,
+}: {
+  path: string;
+  thumb?: string | null;
+  onThumb: (path: string, base64Jpeg: string) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const visible = useVisible(ref);
-  const thumb = usePdfThumbSrc(path, visible);
+  const poster = usePdfThumbSrc(path, visible, thumb, onThumb);
 
   return (
     <div ref={ref} className="media-panel__thumb media-panel__thumb--pdf">
-      {thumb
-        ? <><img src={thumb} alt="" className="media-panel__img" draggable={false} /><div className="media-panel__play-overlay media-panel__play-overlay--pdf"><span className="media-panel__pdf-label">PDF</span></div></>
+      {poster
+        ? <><img src={poster} alt="" className="media-panel__img" draggable={false} /><div className="media-panel__play-overlay media-panel__play-overlay--pdf"><span className="media-panel__pdf-label">PDF</span></div></>
         : <span className="media-panel__thumb-loading" />}
     </div>
   );
@@ -251,11 +297,20 @@ function PdfThumb({ path }: { path: string }) {
 
 // ── Browse overlay ───────────────────────────────────────────────────
 
-function BrowseView({ items, index, onClose, onGo }: {
+function BrowseView({
+  items,
+  index,
+  thumbs,
+  onClose,
+  onGo,
+  onThumb,
+}: {
   items: MediaItem[];
   index: number;
+  thumbs: Record<string, string>;
   onClose: () => void;
   onGo: (i: number) => void;
+  onThumb: (path: string, base64Jpeg: string) => void;
 }) {
   const item = items[index];
   const isImage = !!imageMime(item.path);
@@ -264,11 +319,12 @@ function BrowseView({ items, index, onClose, onGo }: {
   const mime = imageMime(item.path) ?? videoMime(item.path) ?? "application/octet-stream";
 
   const [src, setSrc] = useState<string | null>(null);
+  const [pdfSrc, setPdfSrc] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoThumb = useVideoThumbSrc(item.path, isVideo);
-  const pdfThumb = usePdfThumbSrc(item.path, isPdf);
+  const videoThumb = thumbs[item.path] ?? null;
+  const pdfThumb = thumbs[item.path] ?? null;
 
   useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, [index]);
 
@@ -279,10 +335,40 @@ function BrowseView({ items, index, onClose, onGo }: {
     let url: string | null = null;
     ReadBinaryFile(item.path).then((b64) => {
       if (cancelled || !b64) return;
-      try { url = toObjectUrl(b64, mime); if (!cancelled) setSrc(url); } catch {}
+      try {
+        url = toObjectUrl(b64, mime);
+        if (!cancelled) setSrc(url);
+      } catch {
+      }
     });
-    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [item.path, mime, isPdf]);
+
+  useEffect(() => {
+    if (!isPdf) {
+      setPdfSrc(null);
+      return;
+    }
+    setPdfSrc(null);
+    let cancelled = false;
+    let url: string | null = null;
+    ReadBinaryFile(item.path).then((b64) => {
+      if (cancelled || !b64) return;
+      try {
+        url = toObjectUrl(b64, "application/pdf");
+        if (!cancelled) setPdfSrc(url);
+      } catch {
+      }
+    }).catch(() => {
+    });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [item.path, isPdf]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -294,7 +380,6 @@ function BrowseView({ items, index, onClose, onGo }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [index, items.length, onClose, onGo]);
 
-  // Non-passive wheel listener so we can prevent page scroll while zooming
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !isImage) return;
@@ -321,8 +406,11 @@ function BrowseView({ items, index, onClose, onGo }: {
     const startX = e.clientX;
     const startY = e.clientY;
     const startPan = { x: pan.x, y: pan.y };
-    const onMove = (e: MouseEvent) => setPan({ x: startPan.x + e.clientX - startX, y: startPan.y + e.clientY - startY });
-    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    const onMove = (event: MouseEvent) => setPan({ x: startPan.x + event.clientX - startX, y: startPan.y + event.clientY - startY });
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
@@ -350,8 +438,8 @@ function BrowseView({ items, index, onClose, onGo }: {
           style={{ cursor: isImage && zoom > 1 ? "grab" : "default", overflow: "hidden" }}
         >
           {isPdf ? (
-            pdfThumb ? (
-              <img src={pdfThumb} alt="" className="media-browse__pdf" draggable={false} />
+            pdfSrc ? (
+              <embed src={pdfSrc} type="application/pdf" className="media-browse__pdf" />
             ) : (
               <span className="media-panel__thumb-loading" />
             )
@@ -366,13 +454,13 @@ function BrowseView({ items, index, onClose, onGo }: {
               style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "center center", userSelect: "none" }}
             />
           ) : isVideo ? (
-            <video src={src} poster={videoThumb ?? undefined} controls loop className="media-browse__video" />
+            <video src={src} poster={videoThumb ? toDataUrl(videoThumb) : undefined} controls loop className="media-browse__video" />
           ) : (
             <span className="media-browse__unsupported">{basename(item.path)}</span>
           )}
-          {isPdf && pdfThumb && (
+          {isPdf && pdfThumb && !pdfSrc && (
             <div className="media-browse__thumb-overlay media-browse__thumb-overlay--pdf">
-              <img src={pdfThumb} alt="" className="media-browse__thumb-overlay-img" draggable={false} />
+              <img src={toDataUrl(pdfThumb)} alt="" className="media-browse__thumb-overlay-img" draggable={false} />
               <span className="media-browse__thumb-label">PDF</span>
             </div>
           )}
@@ -383,21 +471,39 @@ function BrowseView({ items, index, onClose, onGo }: {
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────
+function useMediaWorkspaceState() {
+  const [state, setState] = useState(mediaProjectsStore.getState());
 
-function genId(): string {
-  return Math.random().toString(36).slice(2, 10);
+  useEffect(() => {
+    let cancelled = false;
+    void initializeMediaProjects();
+    const unsubscribe = subscribeMediaProjects(() => {
+      if (cancelled) return;
+      setState(mediaProjectsStore.getState());
+    });
+    setState(mediaProjectsStore.getState());
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  return state;
 }
 
 export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorPath, sidebarOpen }: Props) {
-  const [items, setItems] = useState<MediaItem[]>(loadItems);
-  const [snapshots, setSnapshots] = useState<MediaSnapshot[]>(loadSnapshots);
+  const state = useMediaWorkspaceState();
+  const workspace = state.active;
+  const items = workspace?.items ?? [];
+  const thumbs = workspace?.thumbnails ?? {};
+  const workspaces = state.workspaces;
   const [selected, setSelected] = useState<string[]>([]);
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [batchTotal, setBatchTotal] = useState(0);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingViewPath, setRenamingViewPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [cursorIsDir, setCursorIsDir] = useState(false);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [addFeedback, setAddFeedback] = useState<"added" | "exists" | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -408,17 +514,14 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
   }, []);
 
   useEffect(() => {
-    function onChanged() { setItems(loadItems()); }
-    function onBatch(e: Event) { setBatchTotal((e as CustomEvent<{ total: number }>).detail.total); }
-    window.addEventListener(MEDIA_CHANGED_EVENT, onChanged);
+    function onBatch(e: Event) {
+      setBatchTotal((e as CustomEvent<{ total: number }>).detail.total);
+    }
     window.addEventListener(MEDIA_BATCH_EVENT, onBatch);
-    return () => {
-      window.removeEventListener(MEDIA_CHANGED_EVENT, onChanged);
-      window.removeEventListener(MEDIA_BATCH_EVENT, onBatch);
-    };
+    return () => window.removeEventListener(MEDIA_BATCH_EVENT, onBatch);
   }, []);
 
-  useEffect(() => { if (renamingId) renameInputRef.current?.focus(); }, [renamingId]);
+  useEffect(() => { if (renamingViewPath) renameInputRef.current?.focus(); }, [renamingViewPath]);
 
   useEffect(() => {
     return () => {
@@ -428,11 +531,34 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
     };
   }, []);
 
-  // keep selection valid when items change
   useEffect(() => {
-    const paths = new Set(items.map((i) => i.path));
-    setSelected((prev) => prev.filter((p) => paths.has(p)));
+    const paths = new Set(items.map((item) => item.path));
+    setSelected((prev) => prev.filter((path) => paths.has(path)));
+    setBrowseIndex((prev) => (prev !== null && prev < items.length ? prev : null));
   }, [items]);
+
+  useEffect(() => {
+    setSelected([]);
+    setBrowseIndex(null);
+    setRenamingViewPath(null);
+    setRenameValue("");
+  }, [state.activePath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!cursorPath) {
+      setCursorIsDir(false);
+      return;
+    }
+    PathIsDir(cursorPath).then((isDir) => {
+      if (!cancelled) setCursorIsDir(isDir);
+    }).catch(() => {
+      if (!cancelled) setCursorIsDir(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cursorPath]);
 
   function startResize(e: ReactMouseEvent) {
     e.preventDefault();
@@ -440,8 +566,8 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
     const startWidth = width;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
-    function onMove(e: globalThis.MouseEvent) {
-      onWidthChange(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth - (e.clientX - startX))));
+    function onMove(event: globalThis.MouseEvent) {
+      onWidthChange(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, startWidth - (event.clientX - startX))));
     }
     function onUp() {
       document.removeEventListener("mousemove", onMove);
@@ -454,42 +580,9 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
   }
 
   function persistItems(next: MediaItem[]) {
-    setItems(next);
-    saveItems(next);
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setIsDragOver(false);
-    const path = e.dataTransfer.getData("tact/path");
-    const isDir = e.dataTransfer.getData("tact/is-dir") === "true";
-    if (!path || isDir || items.some((i) => i.path === path)) return;
-    persistItems([...items, { path, isDir: false }]);
-  }
-
-  function handleTileClick(path: string, e: ReactMouseEvent) {
-    if (e.metaKey || e.ctrlKey) {
-      setSelected((prev) => prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]);
-    } else if (e.shiftKey && selected.length > 0) {
-      const paths = items.map((i) => i.path);
-      const last = paths.indexOf(selected[selected.length - 1]);
-      const cur = paths.indexOf(path);
-      const [a, b] = [Math.min(last, cur), Math.max(last, cur)];
-      setSelected(paths.slice(a, b + 1));
-    } else {
-      setSelected([path]);
-    }
-  }
-
-  function openBrowse() {
-    if (selected.length === 0) return;
-    const idx = items.findIndex((i) => i.path === selected[0]);
-    if (idx >= 0) setBrowseIndex(idx);
-  }
-
-  function openInEditor() {
-    if (selected.length === 0) return;
-    onSelectFile(selected[0]);
+    setSelected([]);
+    setBrowseIndex(null);
+    void setActiveWorkspaceItems(next);
   }
 
   function triggerAddFeedback(kind: "added" | "exists") {
@@ -503,51 +596,87 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
     }, 1100);
   }
 
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const path = e.dataTransfer.getData("tact/path");
+    const isDir = e.dataTransfer.getData("tact/is-dir") === "true";
+    if (!path) return;
+    if (!isDir && items.some((item) => item.path === path)) return;
+    addToActiveProject(path, isDir);
+  }
+
+  function handleTileClick(path: string, e: ReactMouseEvent) {
+    if (e.metaKey || e.ctrlKey) {
+      setSelected((prev) => prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]);
+    } else if (e.shiftKey && selected.length > 0) {
+      const paths = items.map((item) => item.path);
+      const last = paths.indexOf(selected[selected.length - 1]);
+      const cur = paths.indexOf(path);
+      const [a, b] = [Math.min(last, cur), Math.max(last, cur)];
+      setSelected(paths.slice(a, b + 1));
+    } else {
+      setSelected([path]);
+    }
+  }
+
+  function openBrowse() {
+    if (selected.length === 0) return;
+    const idx = items.findIndex((item) => item.path === selected[0]);
+    if (idx >= 0) setBrowseIndex(idx);
+  }
+
+  function openInEditor() {
+    if (selected.length === 0) return;
+    onSelectFile(selected[0]);
+  }
+
   function removeItem(path: string) {
-    persistItems(items.filter((i) => i.path !== path));
+    persistItems(items.filter((item) => item.path !== path));
   }
 
-  function saveSnapshot() {
-    const name = `Saved ${snapshots.length + 1}`;
-    const snap: MediaSnapshot = { id: genId(), name, items: [...items] };
-    const next = [...snapshots, snap];
-    setSnapshots(next);
-    saveSnapshots(next);
+  function clearView() {
+    void clearActiveWorkspaceItems();
+    setSelected([]);
+    setBrowseIndex(null);
   }
 
-  function restoreSnapshot(snap: MediaSnapshot) {
-    persistItems([...snap.items]);
-  }
-
-  function updateSnapshot(snap: MediaSnapshot) {
-    const next = snapshots.map((s) => s.id === snap.id ? { ...s, items: [...items] } : s);
-    setSnapshots(next);
-    saveSnapshots(next);
-  }
-
-  function deleteSnapshot(id: string) {
-    const next = snapshots.filter((s) => s.id !== id);
-    setSnapshots(next);
-    saveSnapshots(next);
-  }
-
-  function startRename(snap: MediaSnapshot) {
-    setRenamingId(snap.id);
-    setRenameValue(snap.name);
-  }
-
-  function submitRename() {
-    if (!renamingId) return;
+  function submitRenameView(path: string) {
     const name = renameValue.trim();
     if (name) {
-      const next = snapshots.map((s) => s.id === renamingId ? { ...s, name } : s);
-      setSnapshots(next);
-      saveSnapshots(next);
+      void renameMediaWorkspace(path, name);
     }
-    setRenamingId(null);
+    setRenamingViewPath(null);
   }
 
+  function goWorkspace(delta: number) {
+    if (workspaces.length === 0) return;
+    const currentIndex = Math.max(0, workspaces.findIndex((workspace) => workspace.path === state.activePath));
+    const nextIndex = (currentIndex + delta + workspaces.length) % workspaces.length;
+    void selectMediaWorkspace(workspaces[nextIndex].path);
+  }
+
+  function saveWorkspaceRow(path: string) {
+    void overwriteMediaWorkspace(path);
+  }
+
+  function deleteWorkspaceRow(path: string) {
+    void deleteMediaWorkspace(path);
+  }
+
+  const handleThumbGenerated = useCallback((path: string, base64Jpeg: string) => {
+    void setActiveWorkspaceThumbnail(path, base64Jpeg);
+  }, []);
+
   const hasSelection = selected.length > 0;
+
+  if (!state.ready || !workspace) {
+    return (
+      <div className="media-pkg">
+        <div className="media-pkg__loading">Loading media views...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="media-pkg">
@@ -556,24 +685,25 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
           <BrowseView
             items={items}
             index={browseIndex}
+            thumbs={thumbs}
             onClose={() => setBrowseIndex(null)}
             onGo={setBrowseIndex}
+            onThumb={handleThumbGenerated}
           />
         ) : (
           <>
-            {/* Toolbar */}
             <div className="content__toolbar">
               <div className="toolbar-actions">
-                {/* Add cursor file */}
                 <button
                   type="button"
                   className="toolbar-btn"
-                  title={cursorPath ? `Add: ${basename(cursorPath)}` : "No file selected in the file panel"}
+                  title={!cursorPath ? "No file selected in the file panel" : cursorIsDir ? `Add folder recursively: ${basename(cursorPath)}` : `Add: ${basename(cursorPath)}`}
                   disabled={!cursorPath}
-                  onClick={() => {
+                  onClick={async () => {
                     if (!cursorPath) return;
-                    const hadItem = loadItems().some((item) => item.path === cursorPath);
-                    addToActiveProject(cursorPath, false);
+                    const isDir = await PathIsDir(cursorPath);
+                    const hadItem = !isDir && items.some((item) => item.path === cursorPath);
+                    addToActiveProject(cursorPath, isDir);
                     triggerAddFeedback(hadItem ? "exists" : "added");
                   }}
                 >
@@ -584,13 +714,10 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
                 </button>
                 {addFeedback && (
                   <span className={`toolbar-feedback toolbar-feedback--${addFeedback}`} aria-live="polite">
-                    {addFeedback === "added" ? "Added" : "Already in project"}
+                    {addFeedback === "added" ? "Added" : "Already in view"}
                   </span>
                 )}
-
                 <div className="toolbar-separator" />
-
-                {/* Browse fullscreen */}
                 <button
                   type="button"
                   className="toolbar-btn"
@@ -602,8 +729,6 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
                     <path d="M1.5 1h4a.5.5 0 0 1 0 1H2v3.5a.5.5 0 0 1-1 0V1.5A.5.5 0 0 1 1.5 1zm10 0a.5.5 0 0 1 .5.5V6a.5.5 0 0 1-1 0V2h-3.5a.5.5 0 0 1 0-1H11.5zM1 10.5a.5.5 0 0 1 .5-.5H5a.5.5 0 0 1 0 1H2v3a.5.5 0 0 1-1 0v-3.5zm14 0v3.5a.5.5 0 0 1-1 0V11h-3.5a.5.5 0 0 1 0-1H14.5a.5.5 0 0 1 .5.5z"/>
                   </svg>
                 </button>
-
-                {/* Open in editor */}
                 <button
                   type="button"
                   className="toolbar-btn"
@@ -615,8 +740,6 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
                     <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                   </svg>
                 </button>
-
-                {/* Remove selected */}
                 <button
                   type="button"
                   className="toolbar-btn"
@@ -631,7 +754,6 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
               </div>
             </div>
 
-            {/* Thumbnail grid */}
             <ScrollRootContext.Provider value={scrollRoot}>
               <div
                 ref={scrollRootCallback}
@@ -650,6 +772,7 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
                       const isVideo = !!videoMime(item.path);
                       const isPdf = isPdfPath(item.path);
                       const isSelected = selected.includes(item.path);
+                      const thumb = thumbs[item.path] ?? null;
                       return (
                         <button
                           key={item.path}
@@ -658,9 +781,9 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
                           onClick={(e) => handleTileClick(item.path, e)}
                           title={item.path}
                         >
-                          {isImage ? <ImageThumb path={item.path} />
-                            : isVideo ? <VideoThumb path={item.path} />
-                            : isPdf ? <PdfThumb path={item.path} />
+                          {isImage ? <ImageThumb path={item.path} thumb={thumb} onThumb={handleThumbGenerated} />
+                            : isVideo ? <VideoThumb path={item.path} thumb={thumb} onThumb={handleThumbGenerated} />
+                            : isPdf ? <PdfThumb path={item.path} thumb={thumb} onThumb={handleThumbGenerated} />
                             : <FileThumb name={basename(item.path)} />}
                           <span className="media-panel__tile-name">{basename(item.path)}</span>
                         </button>
@@ -671,7 +794,6 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
               </div>
             </ScrollRootContext.Provider>
 
-            {/* Progress bar */}
             {batchTotal > 0 && (
               <div className="media-pkg__progress">
                 <div className="media-pkg__progress-bar">
@@ -686,55 +808,64 @@ export default function MediaPanel({ onSelectFile, width, onWidthChange, cursorP
         )}
       </div>
 
-      {/* Sidebar */}
-      {sidebarOpen && <div className="media-pkg__sidebar" style={{ width, flexShrink: 0 }}>
-        <div className="file-panel__resize-handle file-panel__resize-handle--right" onMouseDown={startResize} />
-        <div className="media-pkg__sidebar-section media-pkg__sidebar-section--grow">
-          <div className="media-pkg__sidebar-header-row">
-            <span className="media-pkg__sidebar-label">Saved</span>
-            <div className="media-pkg__sidebar-actions">
-              <button type="button" className="media-pkg__save-btn" onClick={saveSnapshot}>Save</button>
-              <button type="button" className="media-pkg__save-btn media-pkg__save-btn--clear" onClick={() => persistItems([])}>Clear</button>
+      {sidebarOpen && (
+        <div className="media-pkg__sidebar" style={{ width, flexShrink: 0 }}>
+          <div className="file-panel__resize-handle file-panel__resize-handle--right" onMouseDown={startResize} />
+
+          <div className="media-pkg__sidebar-section media-pkg__sidebar-section--grow">
+            <div className="media-pkg__sidebar-header-row">
+              <span className="media-pkg__sidebar-label">Saved views</span>
+              <div className="media-pkg__sidebar-actions">
+                <button type="button" className="media-pkg__save-btn" onClick={() => goWorkspace(-1)} disabled={workspaces.length <= 1}>Prev</button>
+                <button type="button" className="media-pkg__save-btn" onClick={() => goWorkspace(1)} disabled={workspaces.length <= 1}>Next</button>
+                <button type="button" className="media-pkg__save-btn" onClick={clearView}>Clear</button>
+                <button type="button" className="media-pkg__save-btn" onClick={() => { void createMediaWorkspace(); }}>New view</button>
+              </div>
             </div>
+            {workspaces.length === 0 ? (
+              <span className="media-pkg__sidebar-empty">No saved views yet</span>
+            ) : (
+              <ul className="media-pkg__project-list">
+                {workspaces.map((view: MediaWorkspaceSummary) => (
+                  <li key={view.path} className="media-pkg__project-row">
+                    {renamingViewPath === view.path ? (
+                      <input
+                        ref={renameInputRef}
+                        className="media-pkg__rename-input"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") submitRenameView(view.path); if (e.key === "Escape") setRenamingViewPath(null); }}
+                        onBlur={() => submitRenameView(view.path)}
+                      />
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={`media-pkg__project-btn${state.activePath === view.path ? " media-pkg__project-btn--active" : ""}`}
+                          onClick={() => { void selectMediaWorkspace(view.path); }}
+                          title={view.path}
+                        >
+                          <span className="media-pkg__project-name">{view.name}</span>
+                          {state.activePath === view.path && <span className="media-pkg__project-count">active</span>}
+                        </button>
+                        <button type="button" className="media-pkg__project-action" title="Save current view" onClick={() => saveWorkspaceRow(view.path)}>
+                          <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M2 1.5A1.5 1.5 0 0 1 3.5 0h6.086A1.5 1.5 0 0 1 10.65.44l2.91 2.91A1.5 1.5 0 0 1 14 4.414V14.5A1.5 1.5 0 0 1 12.5 16h-9A1.5 1.5 0 0 1 2 14.5v-13Zm2 0V14h8V5H8.5A1.5 1.5 0 0 1 7 3.5V1.5H4Zm3 0V3.5h3.5L7 1.5ZM4.5 8a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 4.5 8Z"/></svg>
+                        </button>
+                        <button type="button" className="media-pkg__project-action" title="Edit name" onClick={() => { setRenamingViewPath(view.path); setRenameValue(view.name); }}>
+                          <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
+                        </button>
+                        <button type="button" className="media-pkg__project-action media-pkg__project-action--delete" title="Delete" onClick={() => deleteWorkspaceRow(view.path)}>
+                          <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M6 1.5A1.5 1.5 0 0 0 4.5 3V3.5H1.75a.75.75 0 0 0 0 1.5h.55l.82 8.2A2 2 0 0 0 5.11 15h5.78a2 2 0 0 0 1.99-1.8l.82-8.2h.55a.75.75 0 0 0 0-1.5H11.5V3A1.5 1.5 0 0 0 10 1.5H6Zm4 2V3.5H6V3a.5.5 0 0 1 .5-.5h3A.5.5 0 0 1 10 3.5ZM5.32 6.24a.75.75 0 0 1 .84.66l.4 4.5a.75.75 0 0 1-1.5.14l-.4-4.5a.75.75 0 0 1 .66-.8Zm5.02.66a.75.75 0 0 1 1.5.14l-.4 4.5a.75.75 0 0 1-1.5-.14l.4-4.5ZM8 6.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 8 6.5Z"/></svg>
+                        </button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {snapshots.length === 0 ? (
-            <span className="media-pkg__sidebar-empty">No saved snapshots yet</span>
-          ) : (
-            <ul className="media-pkg__project-list">
-              {snapshots.map((snap) => (
-                <li key={snap.id} className="media-pkg__project-row">
-                  {renamingId === snap.id ? (
-                    <input
-                      ref={renameInputRef}
-                      className="media-pkg__rename-input"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") setRenamingId(null); }}
-                      onBlur={submitRename}
-                    />
-                  ) : (
-                    <>
-                      <button type="button" className="media-pkg__project-btn" onClick={() => restoreSnapshot(snap)} title={`Restore: ${snap.name}`}>
-                        <span className="media-pkg__project-name">{snap.name}</span>
-                        <span className="media-pkg__project-count">{snap.items.length}</span>
-                      </button>
-                      <button type="button" className="media-pkg__project-action" title="Save current view" onClick={() => updateSnapshot(snap)}>
-                        <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M2 1.5A1.5 1.5 0 0 1 3.5 0h6.086A1.5 1.5 0 0 1 10.65.44l2.91 2.91A1.5 1.5 0 0 1 14 4.414V14.5A1.5 1.5 0 0 1 12.5 16h-9A1.5 1.5 0 0 1 2 14.5v-13Zm2 0V14h8V5H8.5A1.5 1.5 0 0 1 7 3.5V1.5H4Zm3 0V3.5h3.5L7 1.5ZM4.5 8a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 4.5 8Z"/></svg>
-                      </button>
-                      <button type="button" className="media-pkg__project-action" title="Edit name" onClick={() => startRename(snap)}>
-                        <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg>
-                      </button>
-                      <button type="button" className="media-pkg__project-action media-pkg__project-action--delete" title="Delete" onClick={() => deleteSnapshot(snap.id)}>
-                        <svg viewBox="0 0 16 16" fill="currentColor" width="11" height="11"><path d="M6 1.5A1.5 1.5 0 0 0 4.5 3V3.5H1.75a.75.75 0 0 0 0 1.5h.55l.82 8.2A2 2 0 0 0 5.11 15h5.78a2 2 0 0 0 1.99-1.8l.82-8.2h.55a.75.75 0 0 0 0-1.5H11.5V3A1.5 1.5 0 0 0 10 1.5H6Zm4 2V3.5H6V3a.5.5 0 0 1 .5-.5h3A.5.5 0 0 1 10 3.5ZM5.32 6.24a.75.75 0 0 1 .84.66l.4 4.5a.75.75 0 0 1-1.5.14l-.4-4.5a.75.75 0 0 1 .66-.8Zm5.02.66a.75.75 0 0 1 1.5.14l-.4 4.5a.75.75 0 0 1-1.5-.14l.4-4.5ZM8 6.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 8 6.5Z"/></svg>
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
-      </div>}
+      )}
     </div>
   );
 }
