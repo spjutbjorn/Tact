@@ -11,7 +11,7 @@ import TerminalView from "./TerminalView";
 import Settings from "./Settings";
 import Shortcuts from "./Shortcuts";
 import MediaPanel from "./MediaPanel";
-import { type TransferJob, EnqueueCopy, EnqueueMove, GetTransferQueue, DeleteFile, GetCwd, GitRoot, Navigate, ResizeTerminalSession, SendTerminalInput } from "./wails";
+import { type TransferJob, EnqueueCopy, EnqueueMove, EnqueueZip, GetTransferQueue, DeleteFile, GetCwd, GitRoot, Navigate, ResizeTerminalSession, SendTerminalInput } from "./wails";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, dirname, isMarkdownPath } from "./path";
 import { formatFileSize } from "./filePanelHelpers";
@@ -233,6 +233,10 @@ export default function App() {
     }
   };
 
+  const handleZipFolder = (target: string) => {
+    EnqueueZip(target);
+  };
+
   const handleLaunchTerminal = async (id: string, dir: string) => {
     const sessionID = await launchTerminal(id, dir);
     if (!sessionID) {
@@ -377,6 +381,9 @@ export default function App() {
             onDelete={(target) => {
               void handleDelete(target);
             }}
+            onZipFolder={(target) => {
+              void handleZipFolder(target);
+            }}
             onCopySelection={() => {
               void handleCopySelection("left");
             }}
@@ -517,6 +524,9 @@ export default function App() {
             onDelete={(target) => {
               void handleDelete(target);
             }}
+            onZipFolder={(target) => {
+              void handleZipFolder(target);
+            }}
             onCopySelection={() => {
               void handleCopySelection("right");
             }}
@@ -541,7 +551,7 @@ function TransferStatusBar({ jobs }: { jobs: import("./wails").TransferJob[] }) 
   const queued = jobs.filter((j) => j.status === "queued").length;
   if (!running) return null;
   const pct = running.total > 0 ? Math.min(100, (running.copied / running.total) * 100) : 0;
-  const label = running.kind === "copy" ? "Copying" : "Moving";
+  const label = running.kind === "copy" ? "Copying" : running.kind === "move" ? "Moving" : "Zipping";
   return (
     <div className="transfer-bar transfer-bar--active">
       <span className="transfer-bar__label">

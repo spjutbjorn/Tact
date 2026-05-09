@@ -30,6 +30,10 @@ export function EnqueueMove(arg1, arg2) {
   return window['go']['main']['App']['EnqueueMove'](arg1, arg2);
 }
 
+export function EnqueueZip(arg1) {
+  return window['go']['main']['App']['EnqueueZip'](arg1);
+}
+
 export function GemmaMemory() {
   return window['go']['main']['App']['GemmaMemory']();
 }

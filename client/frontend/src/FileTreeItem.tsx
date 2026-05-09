@@ -4,7 +4,7 @@ import { isZipArchivePath, joinPath } from "./path";
 import { FileIcon, FolderIcon } from "./fileIcons";
 import { type FileHandlerSettings } from "./fileHandlers";
 import { createPeerSignature, entryIndentStyle, fileRowClassName, formatFileSize, shouldShowFileEntry, type SharedKind } from "./filePanelHelpers";
-import { AddToMediaIcon, ChevronIcon, DeleteIcon, RenameIcon } from "./FilePanelIcons";
+import { AddToMediaIcon, ChevronIcon, DeleteIcon, RenameIcon, ZipIcon } from "./FilePanelIcons";
 import { addToActiveProject } from "./mediaProjects";
 
 export interface FileTreeItemProps {
@@ -25,6 +25,7 @@ export interface FileTreeItemProps {
   onNavigate: (p: string) => void;
   onCursorChange: (p: string) => void;
   onDelete: (p: string) => void;
+  onZipFolder: (p: string) => void;
   refreshToken: number;
   setRenamingPath: (p: string | null) => void;
   setRenameValue: (v: string) => void;
@@ -51,6 +52,7 @@ export default function FileTreeItem({
   onNavigate,
   onCursorChange,
   onDelete,
+  onZipFolder,
   refreshToken,
   setRenamingPath,
   setRenameValue,
@@ -162,6 +164,20 @@ export default function FileTreeItem({
           >
             <RenameIcon />
           </button>
+          {isDir && (
+            <button
+              type="button"
+              className="file-panel__small-btn"
+              title="Zip folder"
+              onMouseDown={(event) => { event.stopPropagation(); }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onZipFolder(fullPath);
+              }}
+            >
+              <ZipIcon />
+            </button>
+          )}
           <button
             type="button"
             className="file-panel__small-btn"
@@ -209,6 +225,7 @@ export default function FileTreeItem({
               onNavigate={onNavigate}
               onCursorChange={onCursorChange}
               onDelete={onDelete}
+              onZipFolder={onZipFolder}
               setRenamingPath={setRenamingPath}
               setRenameValue={setRenameValue}
               submitRename={submitRename}

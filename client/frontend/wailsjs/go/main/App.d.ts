@@ -17,6 +17,8 @@ export function EnqueueCopy(arg1:string,arg2:string):Promise<void>;
 
 export function EnqueueMove(arg1:string,arg2:string):Promise<void>;
 
+export function EnqueueZip(arg1:string):Promise<void>;
+
 export function GemmaMemory():Promise<main.GemmaMemoryInfo>;
 
 export function GetCwd():Promise<string>;

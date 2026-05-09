@@ -26,6 +26,7 @@ interface Props {
   onSelectFile: (path: string) => void;
   onCursorChange: (path: string) => void;
   onDelete: (path: string) => void;
+  onZipFolder: (path: string) => void;
   onCopySelection: () => void;
   onMoveSelection: () => void;
   onActivate: () => void;
@@ -49,6 +50,7 @@ export default function FilePanel({
   onSelectFile,
   onCursorChange,
   onDelete,
+  onZipFolder,
   onCopySelection,
   onMoveSelection,
   onActivate,
@@ -68,6 +70,8 @@ export default function FilePanel({
   const [peerChecksums, setPeerChecksums] = useState<Set<string>>(new Set());
   const [peerFileSizes, setPeerFileSizes] = useState<Set<number>>(new Set());
   const rootRef = useRef<HTMLDivElement>(null);
+  const selectedPathRef = useRef(selectedPath);
+  selectedPathRef.current = selectedPath;
 
   useEffect(() => {
     rootRef.current?.style.setProperty("--file-panel-width", `${width}px`);
@@ -85,7 +89,20 @@ export default function FilePanel({
   }
 
   useEffect(() => {
-    void reloadEntries();
+    reloadEntries().then((nextEntries) => {
+      const current = selectedPathRef.current;
+      if (!current) return;
+      const stillExists = nextEntries.some((e) => joinPath(path, e.name) === current);
+      if (stillExists) return;
+      const visible = nextEntries.filter((e) =>
+        shouldShowFileEntry(e.name, showHidden, fileHandlerSettings.hiddenNames),
+      );
+      if (visible.length === 0) return;
+      const prevName = basename(current);
+      const insertIdx = visible.findIndex((e) => e.name.localeCompare(prevName) > 0);
+      const next = insertIdx === -1 ? visible[visible.length - 1] : (visible[insertIdx] ?? visible[visible.length - 1]);
+      onCursorChange(joinPath(path, next.name));
+    });
   }, [path, refreshToken]);
 
   useEffect(() => {
@@ -307,7 +324,8 @@ export default function FilePanel({
     const rows = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('[data-file-row="true"]') ?? []);
     if (!rows.length) return;
     const currentIndex = rows.findIndex((row) => row.dataset.path === selectedPath);
-    const nextIndex = currentIndex === -1 ? 0 : Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
+    if (currentIndex === -1) return;
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
     const nextPath = rows[nextIndex]?.dataset.path;
     if (nextPath) {
       onCursorChange(nextPath);
@@ -490,6 +508,7 @@ export default function FilePanel({
             onNavigate={onNavigate}
             onCursorChange={onCursorChange}
             onDelete={onDelete}
+            onZipFolder={onZipFolder}
             setRenamingPath={setRenamingPath}
             setRenameValue={setRenameValue}
             submitRename={submitRename}

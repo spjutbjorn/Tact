@@ -1,6 +1,6 @@
 export interface TransferJob {
   id: string;
-  kind: "copy" | "move";
+  kind: "copy" | "move" | "zip";
   name: string;
   source: string;
   dest: string;
@@ -71,6 +71,7 @@ interface WailsApp {
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
   PathIsDir: (path: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
+  EnqueueZip: (sourcePath: string) => Promise<void>;
   EnqueueCopy: (sourcePath: string, destinationDir: string) => Promise<void>;
   EnqueueMove: (sourcePath: string, destinationDir: string) => Promise<void>;
   GetTransferQueue: () => Promise<TransferJob[]>;
@@ -197,6 +198,9 @@ export const PathIsDir = (path: string): Promise<boolean> =>
 
 export const DeleteFile = (path: string): Promise<boolean> =>
   app()?.DeleteFile(path) ?? Promise.resolve(false);
+
+export const EnqueueZip = (sourcePath: string): Promise<void> =>
+  app()?.EnqueueZip(sourcePath) ?? Promise.resolve();
 
 export const EnqueueCopy = (sourcePath: string, destinationDir: string): Promise<void> =>
   app()?.EnqueueCopy(sourcePath, destinationDir) ?? Promise.resolve();

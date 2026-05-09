@@ -22,6 +22,7 @@ export interface GitTreeItemProps {
   depth: number;
   onAction: (path: string) => void;
   onRevert: (path: string) => void;
+  onIgnore: (path: string) => void;
   onSelect?: (path: string) => void;
   selectedFile?: string | null;
 }
@@ -30,6 +31,15 @@ function RevertIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
       <path d="M8.146 4.146a.5.5 0 0 1 .708 0l2.5 2.5a.5.5 0 0 1-.708.708L9 6.207V8.5A3.5 3.5 0 1 1 5.5 5H6a.5.5 0 0 1 0 1h-.5a2.5 2.5 0 1 0 2.5 2.5V6.207L6.854 7.354a.5.5 0 1 1-.708-.708l2-2Z" />
+    </svg>
+  );
+}
+
+function IgnoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12">
+      <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm3.646-2.646a.5.5 0 0 1 .708 0L8 9.293l3.646-3.646a.5.5 0 0 1 .708.708L8.707 10l3.647 3.646a.5.5 0 0 1-.708.708L8 10.707l-3.646 3.647a.5.5 0 0 1-.708-.708L7.293 10 3.646 6.354a.5.5 0 0 1 0-.708-.708Z" />
+      <path d="M4.646 4.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708Z" />
     </svg>
   );
 }
@@ -50,7 +60,7 @@ function FileIcon() {
   );
 }
 
-export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selectedFile }: GitTreeItemProps) {
+export function GitTreeItem({ node, depth, onAction, onRevert, onIgnore, onSelect, selectedFile }: GitTreeItemProps) {
   const [expanded, setExpanded] = useState(depth < 1);
 
   if (node.isDir) {
@@ -73,6 +83,17 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
           </div>
           <button
             type="button"
+            className="git-panel__small-btn ignore"
+            title="Add to .gitignore"
+            onClick={(event) => {
+              event.stopPropagation();
+              onIgnore(node.path + "/");
+            }}
+          >
+            <IgnoreIcon />
+          </button>
+          <button
+            type="button"
             className="git-panel__small-btn revert"
             title="Revert folder"
             onClick={(event) => {
@@ -86,7 +107,7 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
         {expanded && (
           <ul className="file-panel__list git-panel__children">
             {node.children.map((child) => (
-              <GitTreeItem key={child.path} node={child} depth={depth + 1} onAction={onAction} onRevert={onRevert} onSelect={onSelect} selectedFile={selectedFile} />
+              <GitTreeItem key={child.path} node={child} depth={depth + 1} onAction={onAction} onRevert={onRevert} onIgnore={onIgnore} onSelect={onSelect} selectedFile={selectedFile} />
             ))}
           </ul>
         )}
@@ -131,6 +152,17 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onSelect, selecte
           }}
         >
           +
+        </button>
+        <button
+          type="button"
+          className="git-panel__small-btn ignore"
+          title="Add to .gitignore"
+          onClick={(event) => {
+            event.stopPropagation();
+            onIgnore(node.path);
+          }}
+        >
+          <IgnoreIcon />
         </button>
         <button
           type="button"

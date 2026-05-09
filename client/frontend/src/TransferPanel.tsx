@@ -44,7 +44,7 @@ export default function TransferPanel({ jobs }: Props) {
             const pct = job.total > 0
               ? Math.min(100, (job.copied / job.total) * 100)
               : (job.status === "done" ? 100 : 0);
-            const label = job.kind === "copy" ? "Copy" : "Move";
+            const label = job.kind === "copy" ? "Copy" : job.kind === "move" ? "Move" : "Zip";
             return (
               <li key={job.id} className="transfer-panel__job">
                 <div className="transfer-panel__job-header">

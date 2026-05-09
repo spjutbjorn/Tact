@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GitAdd, GitBranchName, GitBranches, GitCheckoutBranch, GitCommit, GitCreateBranch, GitDiff, GitFileStatus, GitLastCommitMessage, GitLog, GitPush, GitRevert, GitStatus, GitUnstage, GitShow, ReadTextFile } from "./wails";
+import { GitAdd, GitBranchName, GitBranches, GitCheckoutBranch, GitCommit, GitCreateBranch, GitDiff, GitFileStatus, GitIgnore, GitLastCommitMessage, GitLog, GitPush, GitRevert, GitStatus, GitUnstage, GitShow, ReadTextFile } from "./wails";
 import { buildGitTree, splitGitStatuses } from "./git-panel-utils";
 import { GitTreeItem } from "./GitTreeItem";
 import { DiffEditor } from "@monaco-editor/react";
@@ -57,7 +57,7 @@ function getMonacoLanguage(path: string): string {
   }
 }
 
-function DiffView({ file }: { file: string | null }) {
+function DiffView({ file, statusChar }: { file: string | null; statusChar: string }) {
   const [original, setOriginal] = useState<string>("");
   const [modified, setModified] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -70,17 +70,32 @@ function DiffView({ file }: { file: string | null }) {
     }
 
     setLoading(true);
-    Promise.all([
-      GitShow("HEAD", file).catch(() => ""),
-      ReadTextFile(file)
-    ]).then(([orig, mod]) => {
-      setOriginal(orig);
-      setModified(mod);
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
-  }, [file]);
+    const isAdded = statusChar === "A" || statusChar === "?";
+    const isDeleted = statusChar === "D";
+
+    if (isAdded) {
+      ReadTextFile(file).then((content) => {
+        setOriginal("");
+        setModified(content);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    } else if (isDeleted) {
+      GitShow("HEAD", file).then((content) => {
+        setOriginal(content);
+        setModified("");
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    } else {
+      Promise.all([
+        GitShow("HEAD", file).catch(() => ""),
+        ReadTextFile(file),
+      ]).then(([orig, mod]) => {
+        setOriginal(orig);
+        setModified(mod);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    }
+  }, [file, statusChar]);
 
   if (!file) {
     return <div className="git-panel__diff-empty">Select a file to view diff</div>;
@@ -98,7 +113,7 @@ function DiffView({ file }: { file: string | null }) {
         language={getMonacoLanguage(file)}
         theme="vs-dark"
         options={{
-          renderSideBySide: true,
+          renderSideBySide: false,
           minimap: { enabled: false },
           fontSize: 13,
           fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace',
@@ -109,6 +124,16 @@ function DiffView({ file }: { file: string | null }) {
       />
     </div>
   );
+}
+
+function getFileStatusChar(statuses: GitFileStatus[], path: string | null): string {
+  if (!path) return "";
+  const s = statuses.find((e) => e.path === path);
+  if (!s) return "";
+  if (s.status[0] !== " " && s.status[0] !== "?") return s.status[0];
+  if (s.status[1] !== " ") return s.status[1];
+  if (s.status[0] === "?") return "?";
+  return "";
 }
 
 interface Props {
@@ -208,6 +233,7 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
   }
 
   const { stagedFiles, unstagedFiles } = splitGitStatuses(statuses);
+  const selectedStatusChar = getFileStatusChar(statuses, selectedFile);
   const stagedTree = buildGitTree(stagedFiles);
   const unstagedTree = buildGitTree(unstagedFiles);
 
@@ -245,6 +271,16 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
     }
     setStatusMessage("Commit failed");
     setIsCommitting(false);
+  }
+
+  async function handleIgnore(path: string) {
+    const ok = await GitIgnore(path);
+    if (ok) {
+      setStatusMessage(null);
+      refresh();
+      return;
+    }
+    setStatusMessage(`Could not ignore: ${path}`);
   }
 
   async function handleRevert(path: string) {
@@ -297,7 +333,7 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
             {selectedFile ?? "Diff"}
           </div>
           <div className="git-panel__diff-scroll">
-            <DiffView file={selectedFile} />
+            <DiffView file={selectedFile} statusChar={selectedStatusChar} />
           </div>
         </section>
 
@@ -310,7 +346,7 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
                 <li className="git-panel__empty">Nothing staged</li>
               ) : (
                 stagedTree.map((node) => (
-                  <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} onAction={handleUnstage} onRevert={handleRevert} onSelect={handleSelect} selectedFile={selectedFile} />
+                  <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} onAction={handleUnstage} onRevert={handleRevert} onIgnore={handleIgnore} onSelect={handleSelect} selectedFile={selectedFile} />
                 ))
               )}
             </ul>
@@ -323,7 +359,7 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
                 <li className="git-panel__empty">No changes</li>
               ) : (
                 unstagedTree.map((node) => (
-                  <GitTreeItem key={`unstaged-${node.path}`} node={node} depth={0} onAction={handleStage} onRevert={handleRevert} onSelect={handleSelect} selectedFile={selectedFile} />
+                  <GitTreeItem key={`unstaged-${node.path}`} node={node} depth={0} onAction={handleStage} onRevert={handleRevert} onIgnore={handleIgnore} onSelect={handleSelect} selectedFile={selectedFile} />
                 ))
               )}
             </ul>

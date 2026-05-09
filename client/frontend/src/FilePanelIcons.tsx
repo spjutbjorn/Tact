@@ -54,6 +54,15 @@ export function CompareIcon() {
   );
 }
 
+export function ZipIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+      <path d="M6.5 7.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v.938l.4 1.599a1 1 0 0 1-.416 1.074l-.93.62a1 1 0 0 1-1.108 0l-.93-.62a1 1 0 0 1-.416-1.074L6.5 8.438V7.5z"/>
+      <path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2zm5.5 2a.5.5 0 0 1 0 1H7v1h.5a.5.5 0 0 1 0 1H7v1h.5a.5.5 0 0 1 0 1H7v1h.5a1.5 1.5 0 0 1 1.5 1.5v.938l.4 1.599A2 2 0 0 1 8.567 14H7.433a2 2 0 0 1-1.832-2.963l.4-1.599V8.5A1.5 1.5 0 0 1 7.5 7H8V6h-.5a.5.5 0 0 1 0-1H8V4h-.5a.5.5 0 0 1 0-1H8V2H7.5z"/>
+    </svg>
+  );
+}
+
 export function DeleteIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">

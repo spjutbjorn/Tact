@@ -434,14 +434,17 @@ func (q *transferQueue) runJob(job *TransferJob) {
 		},
 	}
 
-	targetPath := filepath.Join(job.Dest, job.Name)
 	var ok bool
 	switch job.Kind {
 	case "copy":
+		targetPath := filepath.Join(job.Dest, job.Name)
 		ok = !sameOrNestedPath(job.Source, targetPath) &&
 			copyPathRecursive(q.app, job.Source, targetPath, progress)
 	case "move":
+		targetPath := filepath.Join(job.Dest, job.Name)
 		ok = q.doMove(job.Source, targetPath, progress)
+	case "zip":
+		ok = zipFolderWithProgress(job.Source, job.Dest, progress)
 	}
 
 	q.mu.Lock()
@@ -564,6 +567,96 @@ func copyPathRecursive(a *App, sourcePath, targetPath string, progress *copyProg
 	pw := &progressWriter{dst: dst, progress: progress}
 	_, err = io.Copy(pw, src)
 	return err == nil
+}
+
+func zipDestPath(sourcePath string) string {
+	dest := sourcePath + ".zip"
+	if _, err := os.Stat(dest); err == nil {
+		for i := 2; ; i++ {
+			candidate := fmt.Sprintf("%s (%d).zip", sourcePath, i)
+			if _, err := os.Stat(candidate); err != nil {
+				return candidate
+			}
+		}
+	}
+	return dest
+}
+
+func zipFolderWithProgress(sourcePath, destPath string, progress *copyProgress) bool {
+	f, err := os.Create(destPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	zw := zip.NewWriter(f)
+
+	walkErr := filepath.WalkDir(sourcePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path == sourcePath {
+			return nil
+		}
+		rel, err := filepath.Rel(sourcePath, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			_, err = zw.Create(rel + "/")
+			return err
+		}
+		fw, err := zw.Create(rel)
+		if err != nil {
+			return err
+		}
+		src, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		pw := &progressWriter{dst: fw, progress: progress}
+		_, err = io.Copy(pw, src)
+		return err
+	})
+
+	if closeErr := zw.Close(); closeErr != nil && walkErr == nil {
+		walkErr = closeErr
+	}
+	if walkErr != nil {
+		f.Close()
+		os.Remove(destPath)
+		return false
+	}
+	return true
+}
+
+func (a *App) EnqueueZip(sourcePath string) {
+	info, err := os.Stat(sourcePath)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	destPath := zipDestPath(sourcePath)
+	total := a.DirSize(sourcePath)
+	a.queue.mu.Lock()
+	a.queue.seq++
+	job := &TransferJob{
+		ID:     fmt.Sprintf("%d", a.queue.seq),
+		Kind:   "zip",
+		Name:   filepath.Base(destPath),
+		Source: sourcePath,
+		Dest:   destPath,
+		Total:  total,
+		Status: "queued",
+	}
+	a.queue.jobs = append(a.queue.jobs, job)
+	a.queue.mu.Unlock()
+	a.queue.emit()
+	select {
+	case a.queue.ch <- struct{}{}:
+	default:
+	}
 }
 
 func deleteZipEntry(archivePath, innerPath string) bool {
