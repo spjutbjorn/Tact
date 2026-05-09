@@ -6,12 +6,12 @@ export function CleanThumbs(arg1, arg2) {
   return window['go']['main']['App']['CleanThumbs'](arg1, arg2);
 }
 
-export function CloseTerminalSession(arg1) {
-  return window['go']['main']['App']['CloseTerminalSession'](arg1);
+export function ClearDoneTransfers() {
+  return window['go']['main']['App']['ClearDoneTransfers']();
 }
 
-export function CopyPath(arg1, arg2) {
-  return window['go']['main']['App']['CopyPath'](arg1, arg2);
+export function CloseTerminalSession(arg1) {
+  return window['go']['main']['App']['CloseTerminalSession'](arg1);
 }
 
 export function DeleteFile(arg1) {
@@ -22,12 +22,24 @@ export function DirSize(arg1) {
   return window['go']['main']['App']['DirSize'](arg1);
 }
 
+export function EnqueueCopy(arg1, arg2) {
+  return window['go']['main']['App']['EnqueueCopy'](arg1, arg2);
+}
+
+export function EnqueueMove(arg1, arg2) {
+  return window['go']['main']['App']['EnqueueMove'](arg1, arg2);
+}
+
 export function GemmaMemory() {
   return window['go']['main']['App']['GemmaMemory']();
 }
 
 export function GetCwd() {
   return window['go']['main']['App']['GetCwd']();
+}
+
+export function GetTransferQueue() {
+  return window['go']['main']['App']['GetTransferQueue']();
 }
 
 export function GitAdd(arg1) {
@@ -124,10 +136,6 @@ export function MemoryUsage() {
 
 export function MkDir(arg1) {
   return window['go']['main']['App']['MkDir'](arg1);
-}
-
-export function MovePath(arg1, arg2) {
-  return window['go']['main']['App']['MovePath'](arg1, arg2);
 }
 
 export function Navigate(arg1) {

@@ -1,3 +1,14 @@
+export interface TransferJob {
+  id: string;
+  kind: "copy" | "move";
+  name: string;
+  source: string;
+  dest: string;
+  total: number;
+  copied: number;
+  status: "queued" | "running" | "done" | "failed";
+}
+
 export interface FileEntry {
   name: string;
   isDir: boolean;
@@ -60,8 +71,10 @@ interface WailsApp {
   Rename: (oldPath: string, newPath: string) => Promise<boolean>;
   PathIsDir: (path: string) => Promise<boolean>;
   DeleteFile: (path: string) => Promise<boolean>;
-  CopyPath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
-  MovePath: (sourcePath: string, destinationDir: string) => Promise<boolean>;
+  EnqueueCopy: (sourcePath: string, destinationDir: string) => Promise<void>;
+  EnqueueMove: (sourcePath: string, destinationDir: string) => Promise<void>;
+  GetTransferQueue: () => Promise<TransferJob[]>;
+  ClearDoneTransfers: () => Promise<void>;
   GitStatus: () => Promise<GitFileStatus[]>;
   GitAdd: (path: string) => Promise<boolean>;
   GitUnstage: (path: string) => Promise<boolean>;
@@ -185,11 +198,17 @@ export const PathIsDir = (path: string): Promise<boolean> =>
 export const DeleteFile = (path: string): Promise<boolean> =>
   app()?.DeleteFile(path) ?? Promise.resolve(false);
 
-export const CopyPath = (sourcePath: string, destinationDir: string): Promise<boolean> =>
-  app()?.CopyPath(sourcePath, destinationDir) ?? Promise.resolve(false);
+export const EnqueueCopy = (sourcePath: string, destinationDir: string): Promise<void> =>
+  app()?.EnqueueCopy(sourcePath, destinationDir) ?? Promise.resolve();
 
-export const MovePath = (sourcePath: string, destinationDir: string): Promise<boolean> =>
-  app()?.MovePath(sourcePath, destinationDir) ?? Promise.resolve(false);
+export const EnqueueMove = (sourcePath: string, destinationDir: string): Promise<void> =>
+  app()?.EnqueueMove(sourcePath, destinationDir) ?? Promise.resolve();
+
+export const GetTransferQueue = (): Promise<TransferJob[]> =>
+  app()?.GetTransferQueue() ?? Promise.resolve([]);
+
+export const ClearDoneTransfers = (): Promise<void> =>
+  app()?.ClearDoneTransfers() ?? Promise.resolve();
 
 export const GitStatus = (): Promise<GitFileStatus[]> =>
   app()?.GitStatus() ?? Promise.resolve([]);

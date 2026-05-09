@@ -11,10 +11,11 @@ import TerminalView from "./TerminalView";
 import Settings from "./Settings";
 import Shortcuts from "./Shortcuts";
 import MediaPanel from "./MediaPanel";
-import { CopyPath, DeleteFile, DirSize, GetCwd, GitRoot, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput } from "./wails";
+import { type TransferJob, EnqueueCopy, EnqueueMove, GetTransferQueue, DeleteFile, GetCwd, GitRoot, Navigate, ResizeTerminalSession, SendTerminalInput } from "./wails";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, dirname, isMarkdownPath } from "./path";
 import { formatFileSize } from "./filePanelHelpers";
+import TransferPanel from "./TransferPanel";
 import { terminalRegistry } from "./terminalRegistry";
 import { type FileHandlerSettings, loadFileHandlerSettings, saveFileHandlerSettings } from "./fileHandlers";
 import { DISABLED_PROFILES_KEY, PANEL_WIDTH_KEY, isMediaPath, loadDisabledProfiles, loadPanelWidth } from "./appState";
@@ -49,9 +50,8 @@ export default function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
   const [fileListRefreshToken, setFileListRefreshToken] = useState(0);
-  const [transferState, setTransferState] = useState<null | { kind: "copy" | "move"; totalBytes: number; bytesTransferred: number }>(null);
-  const transferStateRef = useRef(transferState);
-  transferStateRef.current = transferState;
+  const [queueJobs, setQueueJobs] = useState<TransferJob[]>([]);
+  const prevQueueJobsRef = useRef<TransferJob[]>([]);
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
   const [mediaFullscreen, setMediaFullscreen] = useState(false);
   const [mediaSidebarOpen, setMediaSidebarOpen] = useState(true);
@@ -89,10 +89,23 @@ export default function App() {
   }, [fileHandlerSettings]);
 
   useEffect(() => {
-    return EventsOn("copy:progress", (copied: number, total: number) => {
-      setTransferState((prev) => prev ? { ...prev, bytesTransferred: copied } : prev);
+    GetTransferQueue().then(setQueueJobs);
+    return EventsOn("queue:update", (jobs: TransferJob[]) => {
+      setQueueJobs(jobs);
     });
   }, []);
+
+  useEffect(() => {
+    const prev = prevQueueJobsRef.current;
+    const newlyDone = queueJobs.some(
+      (j) => (j.status === "done" || j.status === "failed") &&
+        !prev.some((p) => p.id === j.id && (p.status === "done" || p.status === "failed"))
+    );
+    if (newlyDone) {
+      setFileListRefreshToken((v) => v + 1);
+    }
+    prevQueueJobsRef.current = queueJobs;
+  }, [queueJobs]);
 
   function toggleProfileDisabled(id: string) {
     setDisabledProfileIds((current) => {
@@ -248,57 +261,18 @@ export default function App() {
 
   const getDestinationForSide = (side: FileSide) => (side === "left" ? rightPath : leftPath);
 
-  const afterTransfer = (destinationSide: FileSide, targetPath: string, sourceIsDir: boolean) => {
-    if (!sourceIsDir) {
-      setSelectedFile(targetPath);
-      setActiveFileSide(destinationSide);
-      if (destinationSide === "left") {
-        setLeftCursorPath(targetPath);
-      } else {
-        setRightCursorPath(targetPath);
-      }
-    }
-    setIsDirty(false);
-    setFileListRefreshToken((value) => value + 1);
-  };
-
-  const handleCopySelection = async (side: FileSide) => {
+  const handleCopySelection = (side: FileSide) => {
     const sourcePath = getSelectionForSide(side);
     const destinationPath = getDestinationForSide(side);
     if (!sourcePath || !destinationPath) return;
-
-    const [totalBytes, sourceIsDir] = await Promise.all([DirSize(sourcePath), PathIsDir(sourcePath)]);
-    setTransferState({ kind: "copy", totalBytes, bytesTransferred: 0 });
-    try {
-      const ok = await CopyPath(sourcePath, destinationPath);
-      if (ok) {
-        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
-      } else {
-        alert("Copy failed");
-      }
-    } finally {
-      setTimeout(() => setTransferState(null), 200);
-    }
+    EnqueueCopy(sourcePath, destinationPath);
   };
 
-  const handleMoveSelection = async (side: FileSide) => {
+  const handleMoveSelection = (side: FileSide) => {
     const sourcePath = getSelectionForSide(side);
     const destinationPath = getDestinationForSide(side);
     if (!sourcePath || !destinationPath) return;
-
-    const [totalBytes, sourceIsDir] = await Promise.all([DirSize(sourcePath), PathIsDir(sourcePath)]);
-    setTransferState({ kind: "move", totalBytes, bytesTransferred: 0 });
-    try {
-      const ok = await MovePath(sourcePath, destinationPath);
-      if (ok) {
-        afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
-        syncDeletedSelection(sourcePath);
-      } else {
-        alert("Move failed");
-      }
-    } finally {
-      setTimeout(() => setTransferState(null), 200);
-    }
+    EnqueueMove(sourcePath, destinationPath);
   };
 
   const handleToggleDualFiles = () => {
@@ -364,6 +338,8 @@ export default function App() {
   const showGit = activePanel === "git";
   const showGemma = activePanel === "gemma";
   const showTerminals = activePanel === "terminals";
+  const showQueue = activePanel === "queue";
+  const activeTransfers = queueJobs.filter((j) => j.status === "queued" || j.status === "running").length;
   const showDualFiles = showFiles && dualFiles;
   const activePath = activeFileSide === "left" ? leftPath : rightPath;
   const isMd = selectedFile ? isMarkdownPath(selectedFile) : false;
@@ -468,6 +444,8 @@ export default function App() {
                 void handleNavigate(target);
               }}
             />
+          ) : showQueue ? (
+            <TransferPanel jobs={queueJobs} />
           ) : showGit ? (
             <GitPanel initialFile={selectedFile} gitRoot={gitRoot} onSelectFile={handleSelectFile} />
           ) : selectedFile ? (
@@ -550,26 +528,29 @@ export default function App() {
           />
         )}
         {showPanels && (
-          <IconBar activePanel={activePanel} onToggle={togglePanel} dualFiles={dualFiles} onToggleDualFiles={handleToggleDualFiles} />
+          <IconBar activePanel={activePanel} onToggle={togglePanel} dualFiles={dualFiles} onToggleDualFiles={handleToggleDualFiles} activeTransfers={activeTransfers} />
         )}
       </div>
-      <div className={`transfer-bar${transferState ? " transfer-bar--active" : ""}`}>
-        {transferState && (
-          <>
-            <span className="transfer-bar__label">
-              {transferState.kind === "copy" ? "Copying" : "Moving"}
-              {transferState.totalBytes > 0 && <> · {formatFileSize(transferState.bytesTransferred)} / {formatFileSize(transferState.totalBytes)}</>}
-            </span>
-            <div className="transfer-bar__track" aria-hidden="true">
-              <div
-                className="transfer-bar__fill"
-                style={transferState.totalBytes > 0
-                  ? { width: `${Math.min(100, (transferState.bytesTransferred / transferState.totalBytes) * 100)}%`, animation: "none" }
-                  : undefined}
-              />
-            </div>
-          </>
-        )}
+      <TransferStatusBar jobs={queueJobs} />
+    </div>
+  );
+}
+
+function TransferStatusBar({ jobs }: { jobs: import("./wails").TransferJob[] }) {
+  const running = jobs.find((j) => j.status === "running");
+  const queued = jobs.filter((j) => j.status === "queued").length;
+  if (!running) return null;
+  const pct = running.total > 0 ? Math.min(100, (running.copied / running.total) * 100) : 0;
+  const label = running.kind === "copy" ? "Copying" : "Moving";
+  return (
+    <div className="transfer-bar transfer-bar--active">
+      <span className="transfer-bar__label">
+        {label} <strong>{running.name}</strong>
+        {running.total > 0 && <> · {formatFileSize(running.copied)} / {formatFileSize(running.total)}</>}
+        {queued > 0 && <> · {queued} queued</>}
+      </span>
+      <div className="transfer-bar__track" aria-hidden="true">
+        <div className="transfer-bar__fill" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

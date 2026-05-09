@@ -29,6 +29,17 @@ const ICONS: Icon[] = [
     ),
   },
   {
+    id: "queue",
+    title: "Transfers",
+    svg: () => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 8l4 4-4 4" />
+        <path d="M3 12h18" />
+        <path d="M7 16l-4-4 4-4" />
+      </svg>
+    ),
+  },
+  {
     id: "media",
     title: "Media",
     svg: () => (
@@ -99,6 +110,7 @@ interface Props {
   onToggle: (id: string) => void;
   dualFiles: boolean;
   onToggleDualFiles: () => void;
+  activeTransfers: number;
 }
 
 function Logo() {
@@ -127,35 +139,52 @@ function Logo() {
   );
 }
 
-export default function IconBar({ activePanel, onToggle, dualFiles, onToggleDualFiles }: Props) {
+export default function IconBar({ activePanel, onToggle, dualFiles, onToggleDualFiles, activeTransfers }: Props) {
   return (
     <div className="icon-bar">
       <div className="icon-bar__logo-container">
         <Logo />
       </div>
-      {ICONS.map((icon) => (
-        icon.id === "transfer" ? (
+      {ICONS.map((icon) => {
+        if (icon.id === "transfer") {
+          return (
+            <button
+              key={icon.id}
+              className={`icon-bar__btn${dualFiles ? " icon-bar__btn--active" : ""}`}
+              title={icon.title}
+              onClick={onToggleDualFiles}
+              aria-pressed={dualFiles}
+            >
+              <icon.svg />
+            </button>
+          );
+        }
+        if (icon.id === "queue") {
+          return (
+            <button
+              key={icon.id}
+              className={`icon-bar__btn${activePanel === "queue" ? " icon-bar__btn--active" : ""}${activeTransfers > 0 ? " icon-bar__btn--badge" : ""}`}
+              title={icon.title}
+              onClick={() => onToggle("queue")}
+              aria-pressed={activePanel === "queue"}
+              data-badge={activeTransfers > 0 ? String(activeTransfers) : undefined}
+            >
+              <icon.svg />
+            </button>
+          );
+        }
+        return (
           <button
             key={icon.id}
-            className={`icon-bar__btn${dualFiles ? " icon-bar__btn--active" : ""}`}
+            className={`icon-bar__btn${activePanel === icon.id ? " icon-bar__btn--active" : ""}`}
             title={icon.title}
-            onClick={onToggleDualFiles}
-            aria-pressed={dualFiles}
+            onClick={() => onToggle(icon.id)}
+            aria-pressed={activePanel === icon.id}
           >
             <icon.svg />
           </button>
-        ) : (
-        <button
-          key={icon.id}
-          className={`icon-bar__btn${activePanel === icon.id ? " icon-bar__btn--active" : ""}`}
-          title={icon.title}
-          onClick={() => onToggle(icon.id)}
-          aria-pressed={activePanel === icon.id}
-        >
-          <icon.svg />
-        </button>
-        )
-      ))}
+        );
+      })}
       <div className="icon-bar__spacer" />
       <button
         className={`icon-bar__btn${activePanel === "shortcuts" ? " icon-bar__btn--active" : ""}`}

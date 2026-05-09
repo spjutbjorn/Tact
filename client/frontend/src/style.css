@@ -274,7 +274,7 @@
 }
 
 .transfer-bar--active {
-  height: 18px;
+  height: 22px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -283,24 +283,164 @@
 
 .transfer-bar__label {
   font-size: var(--size-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted);
-  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.transfer-bar__label strong {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .transfer-bar__track {
   flex: 1;
-  height: 6px;
+  min-width: 80px;
+  max-width: 200px;
+  height: 4px;
   background: var(--bg-surface-alt);
-  border: 1px solid var(--border-strong);
+  border-radius: 2px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .transfer-bar__fill {
   width: 0%;
   height: 100%;
   background: var(--color-info);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.transfer-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.transfer-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+
+.transfer-panel__title {
+  font-size: var(--size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.transfer-panel__clear-btn {
+  font-size: var(--size-xs);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-main);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.transfer-panel__clear-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.transfer-panel__empty {
+  padding: 24px 12px;
+  color: var(--text-muted);
+  font-size: var(--size-sm);
+  text-align: center;
+}
+
+.transfer-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.transfer-panel__job {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.transfer-panel__job-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.transfer-panel__job-kind {
+  font-size: var(--size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.transfer-panel__job-name {
+  font-size: var(--size-sm);
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-panel__badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.transfer-panel__badge--queued  { background: var(--bg-surface-alt); color: var(--text-muted); }
+.transfer-panel__badge--running { background: #1e3a5f; color: var(--color-info); }
+.transfer-panel__badge--done    { background: #14381f; color: #4ade80; }
+.transfer-panel__badge--failed  { background: #3b1111; color: #f87171; }
+
+.transfer-panel__job-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.transfer-panel__job-size {
+  font-size: var(--size-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.transfer-panel__job-dest {
+  font-size: var(--size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.transfer-panel__track {
+  height: 4px;
+  background: var(--bg-surface-alt);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.transfer-panel__fill {
+  height: 100%;
+  background: var(--color-info);
+  border-radius: 2px;
   transition: width 0.1s linear;
 }
 
@@ -2318,6 +2458,29 @@
 
 .icon-bar__spacer {
   flex: 1;
+}
+
+.icon-bar__btn--badge {
+  position: relative;
+}
+.icon-bar__btn--badge::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* ── Media thumbnail grid (shared) ── */

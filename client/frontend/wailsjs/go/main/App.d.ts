@@ -5,17 +5,23 @@ import {backend} from '../models';
 
 export function CleanThumbs(arg1:string,arg2:Array<string>):Promise<void>;
 
-export function CloseTerminalSession(arg1:string):Promise<boolean>;
+export function ClearDoneTransfers():Promise<void>;
 
-export function CopyPath(arg1:string,arg2:string):Promise<boolean>;
+export function CloseTerminalSession(arg1:string):Promise<boolean>;
 
 export function DeleteFile(arg1:string):Promise<boolean>;
 
 export function DirSize(arg1:string):Promise<number>;
 
+export function EnqueueCopy(arg1:string,arg2:string):Promise<void>;
+
+export function EnqueueMove(arg1:string,arg2:string):Promise<void>;
+
 export function GemmaMemory():Promise<main.GemmaMemoryInfo>;
 
 export function GetCwd():Promise<string>;
+
+export function GetTransferQueue():Promise<Array<main.TransferJob>>;
 
 export function GitAdd(arg1:string):Promise<boolean>;
 
@@ -64,8 +70,6 @@ export function ListVolumes():Promise<Array<main.VolumeInfo>>;
 export function MemoryUsage():Promise<Record<string, number>>;
 
 export function MkDir(arg1:string):Promise<boolean>;
-
-export function MovePath(arg1:string,arg2:string):Promise<boolean>;
 
 export function Navigate(arg1:string):Promise<string>;
 

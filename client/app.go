@@ -233,69 +233,57 @@ func (a *App) DeleteFile(path string) bool {
 	return os.Remove(path) == nil
 }
 
-func (a *App) CopyPath(sourcePath, destinationDir string) bool {
+func (a *App) EnqueueCopy(sourcePath, destinationDir string) {
 	if sourcePath == "" || destinationDir == "" || strings.Contains(destinationDir, "::") {
-		return false
+		return
 	}
-
 	info, err := os.Stat(destinationDir)
 	if err != nil || !info.IsDir() {
-		return false
+		return
 	}
-
 	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
 	if sameOrNestedPath(sourcePath, targetPath) {
-		return false
+		return
 	}
-	total := a.DirSize(sourcePath)
-	progress := &copyProgress{ctx: a.ctx, total: total}
-	ok := copyPathRecursive(a, sourcePath, targetPath, progress)
-	runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
-	return ok
+	a.queue.enqueue("copy", sourcePath, destinationDir)
 }
 
-func (a *App) MovePath(sourcePath, destinationDir string) bool {
+func (a *App) EnqueueMove(sourcePath, destinationDir string) {
 	if sourcePath == "" || destinationDir == "" || strings.Contains(destinationDir, "::") {
-		return false
+		return
 	}
-
 	info, err := os.Stat(destinationDir)
 	if err != nil || !info.IsDir() {
-		return false
+		return
 	}
-
 	targetPath := filepath.Join(destinationDir, copyBaseName(sourcePath))
 	if sameOrNestedPath(sourcePath, targetPath) {
-		return false
+		return
 	}
+	a.queue.enqueue("move", sourcePath, destinationDir)
+}
 
-	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
-		if archivePath == "" || innerPath == "" {
-			return false
+func (a *App) GetTransferQueue() []TransferJob {
+	a.queue.mu.Lock()
+	defer a.queue.mu.Unlock()
+	jobs := make([]TransferJob, len(a.queue.jobs))
+	for i, j := range a.queue.jobs {
+		jobs[i] = *j
+	}
+	return jobs
+}
+
+func (a *App) ClearDoneTransfers() {
+	a.queue.mu.Lock()
+	var active []*TransferJob
+	for _, j := range a.queue.jobs {
+		if j.Status != "done" && j.Status != "failed" {
+			active = append(active, j)
 		}
-		total := a.DirSize(sourcePath)
-		progress := &copyProgress{ctx: a.ctx, total: total}
-		if !copyPathRecursive(a, sourcePath, targetPath, progress) {
-			return false
-		}
-		runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
-		return deleteZipEntry(archivePath, innerPath)
 	}
-
-	if err := os.Rename(sourcePath, targetPath); err == nil {
-		return true
-	}
-
-	total := a.DirSize(sourcePath)
-	progress := &copyProgress{ctx: a.ctx, total: total}
-	if !copyPathRecursive(a, sourcePath, targetPath, progress) {
-		return false
-	}
-	runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
-	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
-		return os.RemoveAll(sourcePath) == nil
-	}
-	return os.Remove(sourcePath) == nil
+	a.queue.jobs = active
+	a.queue.mu.Unlock()
+	a.queue.emit()
 }
 
 func copyBaseName(path string) string {
@@ -329,19 +317,169 @@ func joinCopyPath(parent, child string) string {
 }
 
 type copyProgress struct {
-	ctx      context.Context
 	total    int64
 	copied   int64
 	lastEmit time.Time
+	onUpdate func(copied int64)
 }
 
 func (p *copyProgress) add(n int64) {
 	p.copied += n
+	if p.onUpdate == nil {
+		return
+	}
 	now := time.Now()
 	if now.Sub(p.lastEmit) >= 100*time.Millisecond {
-		runtime.EventsEmit(p.ctx, "copy:progress", p.copied, p.total)
+		p.onUpdate(p.copied)
 		p.lastEmit = now
 	}
+}
+
+type TransferJob struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	Dest   string `json:"dest"`
+	Total  int64  `json:"total"`
+	Copied int64  `json:"copied"`
+	Status string `json:"status"` // "queued", "running", "done", "failed"
+}
+
+type transferQueue struct {
+	app  *App
+	mu   sync.Mutex
+	jobs []*TransferJob
+	ch   chan struct{}
+	seq  uint64
+}
+
+func newTransferQueue(app *App) *transferQueue {
+	q := &transferQueue{
+		app: app,
+		ch:  make(chan struct{}, 1),
+	}
+	go q.worker()
+	return q
+}
+
+func (q *transferQueue) worker() {
+	for {
+		<-q.ch
+	again:
+		job := q.nextPending()
+		if job != nil {
+			q.runJob(job)
+			goto again
+		}
+	}
+}
+
+func (q *transferQueue) nextPending() *TransferJob {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, j := range q.jobs {
+		if j.Status == "queued" {
+			return j
+		}
+	}
+	return nil
+}
+
+func (q *transferQueue) enqueue(kind, sourcePath, destDir string) {
+	total := q.app.DirSize(sourcePath)
+	q.mu.Lock()
+	q.seq++
+	job := &TransferJob{
+		ID:     fmt.Sprintf("%d", q.seq),
+		Kind:   kind,
+		Name:   copyBaseName(sourcePath),
+		Source: sourcePath,
+		Dest:   destDir,
+		Total:  total,
+		Status: "queued",
+	}
+	q.jobs = append(q.jobs, job)
+	q.mu.Unlock()
+	q.emit()
+	select {
+	case q.ch <- struct{}{}:
+	default:
+	}
+}
+
+func (q *transferQueue) emit() {
+	q.mu.Lock()
+	jobs := make([]TransferJob, len(q.jobs))
+	for i, j := range q.jobs {
+		jobs[i] = *j
+	}
+	q.mu.Unlock()
+	runtime.EventsEmit(q.app.ctx, "queue:update", jobs)
+}
+
+func (q *transferQueue) runJob(job *TransferJob) {
+	q.mu.Lock()
+	job.Status = "running"
+	q.mu.Unlock()
+	q.emit()
+
+	progress := &copyProgress{
+		total: job.Total,
+		onUpdate: func(copied int64) {
+			q.mu.Lock()
+			job.Copied = copied
+			q.mu.Unlock()
+			q.emit()
+		},
+	}
+
+	targetPath := filepath.Join(job.Dest, job.Name)
+	var ok bool
+	switch job.Kind {
+	case "copy":
+		ok = !sameOrNestedPath(job.Source, targetPath) &&
+			copyPathRecursive(q.app, job.Source, targetPath, progress)
+	case "move":
+		ok = q.doMove(job.Source, targetPath, progress)
+	}
+
+	q.mu.Lock()
+	if ok {
+		job.Copied = job.Total
+		job.Status = "done"
+	} else {
+		job.Status = "failed"
+	}
+	q.mu.Unlock()
+	q.emit()
+}
+
+func (q *transferQueue) doMove(sourcePath, targetPath string, progress *copyProgress) bool {
+	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
+		if archivePath == "" || innerPath == "" {
+			return false
+		}
+		if !copyPathRecursive(q.app, sourcePath, targetPath, progress) {
+			return false
+		}
+		return deleteZipEntry(archivePath, innerPath)
+	}
+
+	if err := os.Rename(sourcePath, targetPath); err == nil {
+		q.mu.Lock()
+		progress.copied = progress.total
+		q.mu.Unlock()
+		return true
+	}
+
+	if !copyPathRecursive(q.app, sourcePath, targetPath, progress) {
+		return false
+	}
+	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
+		return os.RemoveAll(sourcePath) == nil
+	}
+	return os.Remove(sourcePath) == nil
 }
 
 type progressWriter struct {
@@ -545,6 +683,7 @@ type App struct {
 	terminalMu        sync.Mutex
 	terminalSessions  map[string]*terminalSession
 	terminalLaunchSeq int
+	queue             *transferQueue
 }
 
 type FileEntry struct {
@@ -587,6 +726,7 @@ func (a *App) gitCommand(args ...string) *exec.Cmd {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.queue = newTransferQueue(a)
 }
 
 func (a *App) Ping() string {

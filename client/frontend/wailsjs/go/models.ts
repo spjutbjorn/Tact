@@ -113,6 +113,32 @@ export namespace main {
 	        this.startedAt = source["startedAt"];
 	    }
 	}
+	export class TransferJob {
+	    id: string;
+	    kind: string;
+	    name: string;
+	    source: string;
+	    dest: string;
+	    total: number;
+	    copied: number;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TransferJob(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.source = source["source"];
+	        this.dest = source["dest"];
+	        this.total = source["total"];
+	        this.copied = source["copied"];
+	        this.status = source["status"];
+	    }
+	}
 	export class VolumeInfo {
 	    path: string;
 	    name: string;
