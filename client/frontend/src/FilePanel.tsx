@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { DirSize, type FileEntry, ListDir, ListRecursiveFiles, ListVolumes, type VolumeInfo, WriteTextFile, Rename, MkDir } from "./wails";
+import { DirSize, type FileEntry, ListDir, ListRecursiveFiles, ListVolumes, type VolumeInfo, WriteTextFile, Rename, MkDir, ReadBinaryFile } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 import { type FileHandlerSettings } from "./fileHandlers";
-import { createPeerSignature, formatFileSize, isEditableTarget, shouldShowFileEntry } from "./filePanelHelpers";
+import { CHECKSUM_THRESHOLD, createPeerSignature, formatFileSize, quickChecksumBase64Content, isEditableTarget, shouldShowFileEntry } from "./filePanelHelpers";
 import FilePanelVolumePicker from "./FilePanelVolumePicker";
 import FileTreeItem from "./FileTreeItem";
 import { FileIcon, FolderIcon } from "./fileIcons";
@@ -34,7 +34,6 @@ interface Props {
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 600;
-
 export default function FilePanel({
   side,
   path,
@@ -63,7 +62,9 @@ export default function FilePanel({
   const [showHidden, setShowHidden] = useState(false);
   const [folderSize, setFolderSize] = useState(0);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
-  const [peerSignatures, setPeerSignatures] = useState<Set<string>>(new Set());
+  const [peerNameSizeSignatures, setPeerNameSizeSignatures] = useState<Set<string>>(new Set());
+  const [peerChecksums, setPeerChecksums] = useState<Set<string>>(new Set());
+  const [peerProgress, setPeerProgress] = useState<number>(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,13 +93,40 @@ export default function FilePanel({
   useEffect(() => {
     let cancelled = false;
     if (!dualMode || !peerPath) {
-      setPeerSignatures(new Set());
+      setPeerNameSizeSignatures(new Set());
+      setPeerChecksums(new Set());
+      setPeerProgress(0);
       return;
     }
-    ListRecursiveFiles(peerPath).then((res) => {
+    (async () => {
+      const res = await ListRecursiveFiles(peerPath);
       if (cancelled) return;
-      setPeerSignatures(new Set((res || []).map((entry) => createPeerSignature(basename(entry.name), entry.size))));
-    });
+
+      const entries = (res || []).filter((entry) => !entry.isDir);
+      const nameSizeSignatures = new Set<string>();
+      const checksums = new Set<string>();
+      const totalSteps = Math.max(entries.length, 1);
+      let completedSteps = 0;
+      for (const entry of entries) {
+        if (entry.size < CHECKSUM_THRESHOLD) {
+          const base64 = await ReadBinaryFile(entry.name);
+          if (cancelled || !base64) continue;
+          checksums.add(quickChecksumBase64Content(base64));
+        } else {
+          nameSizeSignatures.add(createPeerSignature(basename(entry.name), entry.size));
+        }
+        completedSteps += 1;
+        if (!cancelled) {
+          setPeerProgress(Math.min(100, Math.round((completedSteps / totalSteps) * 100)));
+        }
+      }
+
+      if (!cancelled) {
+        setPeerNameSizeSignatures(nameSizeSignatures);
+        setPeerChecksums(checksums);
+        setPeerProgress(100);
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -371,6 +399,14 @@ export default function FilePanel({
       onMouseDownCapture={focusPanel}
       tabIndex={0}
     >
+      {dualMode && peerPath && peerProgress > 0 && peerProgress < 100 && (
+        <div className="file-panel__match-progress" aria-hidden="true">
+          <div
+            className="file-panel__match-progress-fill"
+            style={{ width: `${peerProgress}%` }}
+          />
+        </div>
+      )}
       <div className={`file-panel__resize-handle file-panel__resize-handle--${side}`} onMouseDown={startResize} />
       <div className="file-panel__header">
         <span>Files</span>
@@ -468,7 +504,9 @@ export default function FilePanel({
             submitRename={submitRename}
             handleRenameKeyDown={handleRenameKeyDown}
             startRenamePath={startRenamePath}
-            peerSignatures={peerSignatures}
+            peerNameSizeSignatures={peerNameSizeSignatures}
+            peerChecksums={peerChecksums}
+            refreshToken={refreshToken}
           />
         ))}
       </ul>
