@@ -298,20 +298,10 @@
 }
 
 .transfer-bar__fill {
-  width: 35%;
+  width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, var(--color-info), #60a5fa, var(--color-info));
-  background-size: 200% 100%;
-  animation: transfer-bar-move 1s linear infinite;
-}
-
-@keyframes transfer-bar-move {
-  from {
-    transform: translateX(-120%);
-  }
-  to {
-    transform: translateX(300%);
-  }
+  background: var(--color-info);
+  transition: width 0.1s linear;
 }
 
 .content {
@@ -2115,6 +2105,20 @@
 
 .file-panel__entry--shared .entry-icon {
   color: var(--color-success);
+}
+
+.file-panel__entry--shared-blue {
+  background: rgba(59, 130, 246, 0.14);
+  color: #cfe3ff;
+}
+
+.file-panel__entry--shared-blue:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #e0eeff;
+}
+
+.file-panel__entry--shared-blue .entry-icon {
+  color: #60a5fa;
 }
 
 .file-panel__session-row {

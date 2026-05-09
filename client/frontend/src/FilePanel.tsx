@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { DirSize, type FileEntry, ListDir, ListRecursiveFiles, ListVolumes, type VolumeInfo, WriteTextFile, Rename, MkDir, ReadBinaryFile } from "./wails";
+import { DirSize, type FileEntry, ListDir, ListRecursiveFiles, ListVolumes, type VolumeInfo, WriteTextFile, Rename, MkDir } from "./wails";
 import { basename, dirname, isZipArchivePath, joinPath } from "./path";
 import { type FileHandlerSettings } from "./fileHandlers";
-import { CHECKSUM_THRESHOLD, createPeerSignature, formatFileSize, quickChecksumBase64Content, isEditableTarget, shouldShowFileEntry } from "./filePanelHelpers";
+import { createPeerSignature, formatFileSize, isEditableTarget, shouldShowFileEntry } from "./filePanelHelpers";
 import FilePanelVolumePicker from "./FilePanelVolumePicker";
 import FileTreeItem from "./FileTreeItem";
 import { FileIcon, FolderIcon } from "./fileIcons";
-import { AddToMediaIcon, NewFileIcon, NewFolderIcon, RenameIcon } from "./FilePanelIcons";
+import { AddToMediaIcon, CompareIcon, NewFileIcon, NewFolderIcon, RenameIcon } from "./FilePanelIcons";
 import { addFilesToActiveProject } from "./mediaProjects";
 
 type FileSide = "left" | "right";
@@ -62,9 +62,11 @@ export default function FilePanel({
   const [showHidden, setShowHidden] = useState(false);
   const [folderSize, setFolderSize] = useState(0);
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
   const [peerNameSizeSignatures, setPeerNameSizeSignatures] = useState<Set<string>>(new Set());
   const [peerChecksums, setPeerChecksums] = useState<Set<string>>(new Set());
-  const [peerProgress, setPeerProgress] = useState<number>(0);
+  const [peerFileSizes, setPeerFileSizes] = useState<Set<number>>(new Set());
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,45 +94,30 @@ export default function FilePanel({
 
   useEffect(() => {
     let cancelled = false;
-    if (!dualMode || !peerPath) {
-      setPeerNameSizeSignatures(new Set());
-      setPeerChecksums(new Set());
-      setPeerProgress(0);
-      return;
-    }
-    (async () => {
-      const res = await ListRecursiveFiles(peerPath);
+    setPeerNameSizeSignatures(new Set());
+    setPeerChecksums(new Set());
+    setPeerFileSizes(new Set());
+    setIsComparing(false);
+
+    if (!compareEnabled || !dualMode || !peerPath) return;
+
+    setIsComparing(true);
+    ListRecursiveFiles(peerPath).then((res) => {
       if (cancelled) return;
-
-      const entries = (res || []).filter((entry) => !entry.isDir);
+      const entries = (res || []).filter((e) => !e.isDir);
       const nameSizeSignatures = new Set<string>();
-      const checksums = new Set<string>();
-      const totalSteps = Math.max(entries.length, 1);
-      let completedSteps = 0;
+      const fileSizes = new Set<number>();
       for (const entry of entries) {
-        if (entry.size < CHECKSUM_THRESHOLD) {
-          const base64 = await ReadBinaryFile(entry.name);
-          if (cancelled || !base64) continue;
-          checksums.add(quickChecksumBase64Content(base64));
-        } else {
-          nameSizeSignatures.add(createPeerSignature(basename(entry.name), entry.size));
-        }
-        completedSteps += 1;
-        if (!cancelled) {
-          setPeerProgress(Math.min(100, Math.round((completedSteps / totalSteps) * 100)));
-        }
+        nameSizeSignatures.add(createPeerSignature(basename(entry.name), entry.size));
+        fileSizes.add(entry.size);
       }
+      setPeerNameSizeSignatures(nameSizeSignatures);
+      setPeerFileSizes(fileSizes);
+      setIsComparing(false);
+    });
 
-      if (!cancelled) {
-        setPeerNameSizeSignatures(nameSizeSignatures);
-        setPeerChecksums(checksums);
-        setPeerProgress(100);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [dualMode, peerPath, refreshToken]);
+    return () => { cancelled = true; };
+  }, [compareEnabled, dualMode, peerPath, refreshToken]);
 
   useEffect(() => {
     if (!path) {
@@ -154,6 +141,7 @@ export default function FilePanel({
 
   useEffect(() => {
     function handleWindowKeyDown(e: KeyboardEvent) {
+      if (!active) return;
       const target = e.target as HTMLElement | null;
       if (isEditableTarget(target)) {
         return;
@@ -224,7 +212,7 @@ export default function FilePanel({
 
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [side, dualMode, onCopySelection, onMoveSelection, onCursorChange, selectedPath, onNavigate, onSelectFile]);
+  }, [active, side, dualMode, onCopySelection, onMoveSelection, onCursorChange, selectedPath, onNavigate, onSelectFile]);
 
   const filteredEntries = entries.filter((entry) =>
     shouldShowFileEntry(entry.name, showHidden, fileHandlerSettings.hiddenNames),
@@ -399,13 +387,8 @@ export default function FilePanel({
       onMouseDownCapture={focusPanel}
       tabIndex={0}
     >
-      {dualMode && peerPath && peerProgress > 0 && peerProgress < 100 && (
-        <div className="file-panel__match-progress" aria-hidden="true">
-          <div
-            className="file-panel__match-progress-fill"
-            style={{ width: `${peerProgress}%` }}
-          />
-        </div>
+      {compareEnabled && isComparing && (
+        <div className="file-panel__match-progress" aria-hidden="true" />
       )}
       <div className={`file-panel__resize-handle file-panel__resize-handle--${side}`} onMouseDown={startResize} />
       <div className="file-panel__header">
@@ -423,6 +406,14 @@ export default function FilePanel({
           </button>
           <button className="file-panel__new-btn" onClick={startRename} title="Rename Selected" disabled={!selectedPath}>
             <RenameIcon />
+          </button>
+          <button
+            className={`file-panel__new-btn${compareEnabled ? " active" : ""}`}
+            onClick={() => setCompareEnabled(!compareEnabled)}
+            title={compareEnabled ? "Disable Compare" : "Compare Files"}
+            disabled={!dualMode || !peerPath}
+          >
+            <CompareIcon />
           </button>
           <button className="file-panel__new-btn" onClick={() => { setCreatingKind("folder"); setNewName(""); }} title="New Folder">
             <NewFolderIcon />
@@ -478,7 +469,7 @@ export default function FilePanel({
               <FolderIcon />
               <span>..</span>
             </div>
-            <span className="file-panel__size">{formatFileSize(folderSize)}</span>
+            <span className="file-panel__size">{filteredEntries.length} files{folderSize > 0 ? ` · ${formatFileSize(folderSize)}` : ""}</span>
           </button>
           </li>
         )}
@@ -506,6 +497,7 @@ export default function FilePanel({
             startRenamePath={startRenamePath}
             peerNameSizeSignatures={peerNameSizeSignatures}
             peerChecksums={peerChecksums}
+            peerFileSizes={peerFileSizes}
             refreshToken={refreshToken}
           />
         ))}

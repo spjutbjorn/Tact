@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Breadcrumb from "./Breadcrumb";
 import { AppTitlebar, ContentToolbar } from "./AppChrome";
 import FilePanel from "./FilePanel";
@@ -11,8 +11,10 @@ import TerminalView from "./TerminalView";
 import Settings from "./Settings";
 import Shortcuts from "./Shortcuts";
 import MediaPanel from "./MediaPanel";
-import { CopyPath, DeleteFile, GetCwd, GitRoot, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput } from "./wails";
+import { CopyPath, DeleteFile, DirSize, GetCwd, GitRoot, MovePath, Navigate, PathIsDir, ResizeTerminalSession, SendTerminalInput } from "./wails";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 import { basename, dirname, isMarkdownPath } from "./path";
+import { formatFileSize } from "./filePanelHelpers";
 import { terminalRegistry } from "./terminalRegistry";
 import { type FileHandlerSettings, loadFileHandlerSettings, saveFileHandlerSettings } from "./fileHandlers";
 import { DISABLED_PROFILES_KEY, PANEL_WIDTH_KEY, isMediaPath, loadDisabledProfiles, loadPanelWidth } from "./appState";
@@ -34,7 +36,7 @@ export default function App() {
   const [terminalSidebarOpen, setTerminalSidebarOpen] = useState(false);
   const [dualFiles, setDualFiles] = useState(false);
   const [activeFileSide, setActiveFileSide] = useState<FileSide>("right");
-  const [leftMirrorsRight, setLeftMirrorsRight] = useState(true);
+  const [leftMirrorsRight, setLeftMirrorsRight] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileViewerOrigin, setFileViewerOrigin] = useState<string>("files");
   const [leftPath, setLeftPath] = useState("");
@@ -47,7 +49,9 @@ export default function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [previewMode, setPreviewMode] = useState(true);
   const [fileListRefreshToken, setFileListRefreshToken] = useState(0);
-  const [transferState, setTransferState] = useState<null | { kind: "copy" | "move" }>(null);
+  const [transferState, setTransferState] = useState<null | { kind: "copy" | "move"; totalBytes: number; bytesTransferred: number }>(null);
+  const transferStateRef = useRef(transferState);
+  transferStateRef.current = transferState;
   const [leftHasOwnLocation, setLeftHasOwnLocation] = useState(false);
   const [mediaFullscreen, setMediaFullscreen] = useState(false);
   const [mediaSidebarOpen, setMediaSidebarOpen] = useState(true);
@@ -83,6 +87,12 @@ export default function App() {
   useEffect(() => {
     saveFileHandlerSettings(fileHandlerSettings);
   }, [fileHandlerSettings]);
+
+  useEffect(() => {
+    return EventsOn("copy:progress", (copied: number, total: number) => {
+      setTransferState((prev) => prev ? { ...prev, bytesTransferred: copied } : prev);
+    });
+  }, []);
 
   function toggleProfileDisabled(id: string) {
     setDisabledProfileIds((current) => {
@@ -257,9 +267,9 @@ export default function App() {
     const destinationPath = getDestinationForSide(side);
     if (!sourcePath || !destinationPath) return;
 
-    setTransferState({ kind: "copy" });
+    const [totalBytes, sourceIsDir] = await Promise.all([DirSize(sourcePath), PathIsDir(sourcePath)]);
+    setTransferState({ kind: "copy", totalBytes, bytesTransferred: 0 });
     try {
-      const sourceIsDir = await PathIsDir(sourcePath);
       const ok = await CopyPath(sourcePath, destinationPath);
       if (ok) {
         afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
@@ -276,9 +286,9 @@ export default function App() {
     const destinationPath = getDestinationForSide(side);
     if (!sourcePath || !destinationPath) return;
 
-    setTransferState({ kind: "move" });
+    const [totalBytes, sourceIsDir] = await Promise.all([DirSize(sourcePath), PathIsDir(sourcePath)]);
+    setTransferState({ kind: "move", totalBytes, bytesTransferred: 0 });
     try {
-      const sourceIsDir = await PathIsDir(sourcePath);
       const ok = await MovePath(sourcePath, destinationPath);
       if (ok) {
         afterTransfer(side === "left" ? "right" : "left", `${destinationPath}/${basename(sourcePath)}`, sourceIsDir);
@@ -300,10 +310,8 @@ export default function App() {
         const currentCursor = rightCursorPath ?? selectedFile ?? null;
         setRightPath(currentPath);
         setRightCursorPath(currentCursor);
-        if (!leftHasOwnLocation) {
-          setLeftPath(currentPath);
-          setLeftCursorPath(currentCursor);
-        }
+        setLeftPath(currentPath);
+        setLeftCursorPath(currentCursor);
         setLeftMirrorsRight(false);
         setActiveFileSide("right");
         setPath(currentPath);
@@ -548,9 +556,17 @@ export default function App() {
       <div className={`transfer-bar${transferState ? " transfer-bar--active" : ""}`}>
         {transferState && (
           <>
-            <span className="transfer-bar__label">{transferState.kind === "copy" ? "Copying" : "Moving"}</span>
+            <span className="transfer-bar__label">
+              {transferState.kind === "copy" ? "Copying" : "Moving"}
+              {transferState.totalBytes > 0 && <> · {formatFileSize(transferState.bytesTransferred)} / {formatFileSize(transferState.totalBytes)}</>}
+            </span>
             <div className="transfer-bar__track" aria-hidden="true">
-              <div className="transfer-bar__fill" />
+              <div
+                className="transfer-bar__fill"
+                style={transferState.totalBytes > 0
+                  ? { width: `${Math.min(100, (transferState.bytesTransferred / transferState.totalBytes) * 100)}%`, animation: "none" }
+                  : undefined}
+              />
             </div>
           </>
         )}

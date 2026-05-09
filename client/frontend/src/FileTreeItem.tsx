@@ -1,9 +1,9 @@
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { ListDir, ReadBinaryFile, type FileEntry } from "./wails";
+import { ListDir, type FileEntry } from "./wails";
 import { isZipArchivePath, joinPath } from "./path";
 import { FileIcon, FolderIcon } from "./fileIcons";
 import { type FileHandlerSettings } from "./fileHandlers";
-import { CHECKSUM_THRESHOLD, createPeerSignature, entryIndentStyle, fileRowClassName, formatFileSize, quickChecksumBase64Content, shouldShowFileEntry } from "./filePanelHelpers";
+import { createPeerSignature, entryIndentStyle, fileRowClassName, formatFileSize, shouldShowFileEntry, type SharedKind } from "./filePanelHelpers";
 import { AddToMediaIcon, ChevronIcon, DeleteIcon, RenameIcon } from "./FilePanelIcons";
 import { addToActiveProject } from "./mediaProjects";
 
@@ -15,6 +15,7 @@ export interface FileTreeItemProps {
   depth: number;
   peerNameSizeSignatures: Set<string>;
   peerChecksums: Set<string>;
+  peerFileSizes: Set<number>;
   selectedPath: string | null;
   renamingPath: string | null;
   renameValue: string;
@@ -40,6 +41,7 @@ export default function FileTreeItem({
   depth,
   peerNameSizeSignatures,
   peerChecksums,
+  peerFileSizes,
   selectedPath,
   renamingPath,
   renameValue,
@@ -58,44 +60,22 @@ export default function FileTreeItem({
 }: FileTreeItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[]>([]);
-  const [currentHash, setCurrentHash] = useState<string>("");
   const fullPath = joinPath(path, name);
   const active = fullPath === selectedPath;
   const isRenaming = fullPath === renamingPath;
   const directSignature = createPeerSignature(name, size);
-  const useChecksum = !isDir && size < CHECKSUM_THRESHOLD;
-  const hasDirectMatch = !useChecksum && peerNameSizeSignatures.has(directSignature);
-  const needsHashCheck = useChecksum;
-  const shared = fileHandlerSettings.highlightSharedFiles && !isDir && !active && (
-    hasDirectMatch ||
-    (useChecksum && currentHash !== "" && peerChecksums.has(currentHash))
-  );
+  const hasDirectMatch = !isDir && peerNameSizeSignatures.has(directSignature);
+  const sharedKind: SharedKind = !fileHandlerSettings.highlightSharedFiles || isDir || active
+    ? null
+    : hasDirectMatch
+      ? "green"
+      : null;
 
   useEffect(() => {
     if (expanded && isDir) {
       ListDir(fullPath).then(setChildren);
     }
   }, [expanded, fullPath, isDir, refreshToken]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!needsHashCheck) {
-      setCurrentHash("");
-      return;
-    }
-    ReadBinaryFile(fullPath).then(async (base64) => {
-      if (cancelled || !base64) {
-        return;
-      }
-      const hash = quickChecksumBase64Content(base64);
-      if (!cancelled) {
-        setCurrentHash(hash);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [fullPath, needsHashCheck, refreshToken]);
 
   const toggleExpand = (e: ReactMouseEvent) => {
     e.stopPropagation();
@@ -134,7 +114,7 @@ export default function FileTreeItem({
           data-file-row="true"
           data-path={fullPath}
           data-is-dir={isDir ? "true" : "false"}
-          className={fileRowClassName(isDir, active, shared)}
+          className={fileRowClassName(isDir, active, sharedKind)}
           style={entryIndentStyle(depth)}
           draggable
           onDragStart={(e) => {
@@ -236,6 +216,7 @@ export default function FileTreeItem({
               startRenamePath={startRenamePath}
               peerNameSizeSignatures={peerNameSizeSignatures}
               peerChecksums={peerChecksums}
+              peerFileSizes={peerFileSizes}
               refreshToken={refreshToken}
             />
           ))}

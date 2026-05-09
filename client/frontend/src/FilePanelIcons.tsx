@@ -46,6 +46,14 @@ export function AddToMediaIcon() {
   );
 }
 
+export function CompareIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+      <path d="M5.5 3a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V7.707L3.854 8.854a.5.5 0 1 1-.708-.708l2-2a.5.5 0 0 1 .354-.146ZM10.5 13a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 1 0v4.293l1.146-1.147a.5.5 0 1 1 .708.708l-2 2a.5.5 0 0 1-.354.146Z"/>
+    </svg>
+  );
+}
+
 export function DeleteIcon() {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">

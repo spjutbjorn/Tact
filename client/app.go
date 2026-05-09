@@ -247,7 +247,11 @@ func (a *App) CopyPath(sourcePath, destinationDir string) bool {
 	if sameOrNestedPath(sourcePath, targetPath) {
 		return false
 	}
-	return copyPathRecursive(a, sourcePath, targetPath)
+	total := a.DirSize(sourcePath)
+	progress := &copyProgress{ctx: a.ctx, total: total}
+	ok := copyPathRecursive(a, sourcePath, targetPath, progress)
+	runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
+	return ok
 }
 
 func (a *App) MovePath(sourcePath, destinationDir string) bool {
@@ -269,9 +273,12 @@ func (a *App) MovePath(sourcePath, destinationDir string) bool {
 		if archivePath == "" || innerPath == "" {
 			return false
 		}
-		if !copyPathRecursive(a, sourcePath, targetPath) {
+		total := a.DirSize(sourcePath)
+		progress := &copyProgress{ctx: a.ctx, total: total}
+		if !copyPathRecursive(a, sourcePath, targetPath, progress) {
 			return false
 		}
+		runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
 		return deleteZipEntry(archivePath, innerPath)
 	}
 
@@ -279,9 +286,12 @@ func (a *App) MovePath(sourcePath, destinationDir string) bool {
 		return true
 	}
 
-	if !copyPathRecursive(a, sourcePath, targetPath) {
+	total := a.DirSize(sourcePath)
+	progress := &copyProgress{ctx: a.ctx, total: total}
+	if !copyPathRecursive(a, sourcePath, targetPath, progress) {
 		return false
 	}
+	runtime.EventsEmit(a.ctx, "copy:progress", progress.copied, total)
 	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
 		return os.RemoveAll(sourcePath) == nil
 	}
@@ -318,29 +328,63 @@ func joinCopyPath(parent, child string) string {
 	return filepath.Join(parent, child)
 }
 
-func copyPathRecursive(a *App, sourcePath, targetPath string) bool {
-	if data, ok := readPathBytes(sourcePath); ok {
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-			return false
-		}
-		return os.WriteFile(targetPath, data, 0644) == nil
-	}
+type copyProgress struct {
+	ctx      context.Context
+	total    int64
+	copied   int64
+	lastEmit time.Time
+}
 
+func (p *copyProgress) add(n int64) {
+	p.copied += n
+	now := time.Now()
+	if now.Sub(p.lastEmit) >= 100*time.Millisecond {
+		runtime.EventsEmit(p.ctx, "copy:progress", p.copied, p.total)
+		p.lastEmit = now
+	}
+}
+
+type progressWriter struct {
+	dst      io.Writer
+	progress *copyProgress
+}
+
+func (pw *progressWriter) Write(b []byte) (int, error) {
+	n, err := pw.dst.Write(b)
+	pw.progress.add(int64(n))
+	return n, err
+}
+
+func copyPathRecursive(a *App, sourcePath, targetPath string, progress *copyProgress) bool {
 	if archivePath, innerPath, ok := splitVirtualZipPath(sourcePath); ok {
 		if archivePath == "" || innerPath == "" {
 			return false
 		}
 		children := a.ListDir(sourcePath)
-		if err := os.MkdirAll(targetPath, 0755); err != nil {
-			return false
-		}
-		for _, child := range children {
-			childSource := joinCopyPath(sourcePath, child.Name)
-			childTarget := filepath.Join(targetPath, child.Name)
-			if !copyPathRecursive(a, childSource, childTarget) {
+		if len(children) > 0 {
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return false
 			}
+			for _, child := range children {
+				childSource := joinCopyPath(sourcePath, child.Name)
+				childTarget := filepath.Join(targetPath, child.Name)
+				if !copyPathRecursive(a, childSource, childTarget, progress) {
+					return false
+				}
+			}
+			return true
 		}
+		data, ok := readPathBytes(sourcePath)
+		if !ok {
+			return false
+		}
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return false
+		}
+		if err := os.WriteFile(targetPath, data, 0644); err != nil {
+			return false
+		}
+		progress.add(int64(len(data)))
 		return true
 	}
 
@@ -359,7 +403,7 @@ func copyPathRecursive(a *App, sourcePath, targetPath string) bool {
 		for _, entry := range entries {
 			childSource := filepath.Join(sourcePath, entry.Name())
 			childTarget := filepath.Join(targetPath, entry.Name())
-			if !copyPathRecursive(a, childSource, childTarget) {
+			if !copyPathRecursive(a, childSource, childTarget, progress) {
 				return false
 			}
 		}
@@ -369,11 +413,19 @@ func copyPathRecursive(a *App, sourcePath, targetPath string) bool {
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
 		return false
 	}
-	data, err := os.ReadFile(sourcePath)
+	src, err := os.Open(sourcePath)
 	if err != nil {
 		return false
 	}
-	return os.WriteFile(targetPath, data, 0644) == nil
+	defer src.Close()
+	dst, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return false
+	}
+	defer dst.Close()
+	pw := &progressWriter{dst: dst, progress: progress}
+	_, err = io.Copy(pw, src)
+	return err == nil
 }
 
 func deleteZipEntry(archivePath, innerPath string) bool {

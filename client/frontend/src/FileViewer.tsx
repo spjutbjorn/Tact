@@ -161,18 +161,20 @@ function useBinaryObjectUrl(path: string, mime: string): string | null {
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (previousUrl.current) URL.revokeObjectURL(previousUrl.current);
     previousUrl.current = null;
     setUrl(null);
 
     ReadBinaryFile(path).then((base64) => {
-      if (!base64) return;
+      if (cancelled || !base64) return;
       const nextUrl = binaryToObjectUrl(base64, mime);
       previousUrl.current = nextUrl;
       setUrl(nextUrl);
     });
 
     return () => {
+      cancelled = true;
       if (previousUrl.current) URL.revokeObjectURL(previousUrl.current);
       previousUrl.current = null;
     };
@@ -186,6 +188,7 @@ function useVideoSource(path: string, mime: string): string | null {
   const previousUrl = useRef<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (previousUrl.current?.startsWith("blob:")) URL.revokeObjectURL(previousUrl.current);
     previousUrl.current = null;
     setSrc(null);
@@ -196,13 +199,14 @@ function useVideoSource(path: string, mime: string): string | null {
     }
 
     ReadBinaryFile(path).then((base64) => {
-      if (!base64) return;
+      if (cancelled || !base64) return;
       const url = binaryToObjectUrl(base64, mime);
       previousUrl.current = url;
       setSrc(url);
     });
 
     return () => {
+      cancelled = true;
       if (previousUrl.current?.startsWith("blob:")) URL.revokeObjectURL(previousUrl.current);
       previousUrl.current = null;
     };

@@ -27,12 +27,15 @@ export function quickChecksumBase64Content(base64Content: string): string {
   return `adler32:${((b << 16) | a).toString(16)}`;
 }
 
-export function fileRowClassName(isDir: boolean, active: boolean, shared: boolean): string {
+export type SharedKind = "green" | "blue" | null;
+
+export function fileRowClassName(isDir: boolean, active: boolean, sharedKind: SharedKind): string {
   return [
     "file-panel__entry",
     isDir ? "file-panel__entry--dir" : "file-panel__entry--file",
     active ? "file-panel__entry--active" : "",
-    shared ? "file-panel__entry--shared" : "",
+    sharedKind === "green" ? "file-panel__entry--shared" : "",
+    sharedKind === "blue" ? "file-panel__entry--shared-blue" : "",
   ]
     .filter(Boolean)
     .join(" ");
