@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"tact/internal/backend"
@@ -49,6 +50,11 @@ func (a *App) GitStatus() []GitFileStatus {
 		}
 		status := line[:2]
 		path := line[3:]
+		if len(path) >= 2 && path[0] == '"' && path[len(path)-1] == '"' {
+			if unquoted, err := strconv.Unquote(path); err == nil {
+				path = unquoted
+			}
+		}
 		result = append(result, GitFileStatus{Path: path, Status: status})
 	}
 
@@ -75,11 +81,17 @@ func (a *App) GitAdd(path string) bool {
 
 func (a *App) GitUnstage(path string) bool {
 	cmd := a.gitCommand("reset", "HEAD", "--", path)
+	if cmd.Run() == nil {
+		return true
+	}
+	// Fallback for repos with no HEAD yet (before first commit)
+	cmd = a.gitCommand("rm", "--cached", "-r", "--", path)
 	return cmd.Run() == nil
 }
 
 func (a *App) GitIgnore(path string) bool {
-	f, err := os.OpenFile(".gitignore", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	ignorePath := filepath.Join(a.gitRoot(), ".gitignore")
+	f, err := os.OpenFile(ignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return false
 	}
@@ -387,7 +399,6 @@ func (q *transferQueue) nextPending() *TransferJob {
 }
 
 func (q *transferQueue) enqueue(kind, sourcePath, destDir string) {
-	total := q.app.DirSize(sourcePath)
 	q.mu.Lock()
 	q.seq++
 	job := &TransferJob{
@@ -396,7 +407,6 @@ func (q *transferQueue) enqueue(kind, sourcePath, destDir string) {
 		Name:   copyBaseName(sourcePath),
 		Source: sourcePath,
 		Dest:   destDir,
-		Total:  total,
 		Status: "queued",
 	}
 	q.jobs = append(q.jobs, job)
@@ -419,13 +429,15 @@ func (q *transferQueue) emit() {
 }
 
 func (q *transferQueue) runJob(job *TransferJob) {
+	total := q.app.DirSize(job.Source)
 	q.mu.Lock()
+	job.Total = total
 	job.Status = "running"
 	q.mu.Unlock()
 	q.emit()
 
 	progress := &copyProgress{
-		total: job.Total,
+		total: total,
 		onUpdate: func(copied int64) {
 			q.mu.Lock()
 			job.Copied = copied
@@ -638,7 +650,6 @@ func (a *App) EnqueueZip(sourcePath string) {
 		return
 	}
 	destPath := zipDestPath(sourcePath)
-	total := a.DirSize(sourcePath)
 	a.queue.mu.Lock()
 	a.queue.seq++
 	job := &TransferJob{
@@ -647,7 +658,6 @@ func (a *App) EnqueueZip(sourcePath string) {
 		Name:   filepath.Base(destPath),
 		Source: sourcePath,
 		Dest:   destPath,
-		Total:  total,
 		Status: "queued",
 	}
 	a.queue.jobs = append(a.queue.jobs, job)

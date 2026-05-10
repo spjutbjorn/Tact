@@ -20,6 +20,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 export interface GitTreeItemProps {
   node: GitNode;
   depth: number;
+  staged?: boolean;
   onAction: (path: string) => void;
   onRevert: (path: string) => void;
   onIgnore: (path: string) => void;
@@ -60,14 +61,14 @@ function FileIcon() {
   );
 }
 
-export function GitTreeItem({ node, depth, onAction, onRevert, onIgnore, onSelect, selectedFile }: GitTreeItemProps) {
+export function GitTreeItem({ node, depth, staged, onAction, onRevert, onIgnore, onSelect, selectedFile }: GitTreeItemProps) {
   const [expanded, setExpanded] = useState(depth < 1);
 
   if (node.isDir) {
     return (
       <li className="git-panel__tree-node">
         <div className="file-panel__entry file-panel__entry--dir git-panel__tree-row" style={entryIndentStyle(depth, 14)}>
-          <div className="file-panel__entry-left git-panel__tree-left" onClick={() => onAction(node.path)}>
+          <div className="file-panel__entry-left git-panel__tree-left">
             <button
               type="button"
               className="file-panel__expand-icon git-panel__expand-icon"
@@ -81,6 +82,17 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onIgnore, onSelec
             <span className="git-panel__tree-icon"><FolderIcon /></span>
             <span className="git-panel__path git-panel__path--dir">{node.name}/</span>
           </div>
+          <button
+            type="button"
+            className={`git-panel__small-btn ${staged ? "minus" : "plus"}`}
+            title={staged ? "Unstage folder" : "Stage folder"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onAction(node.path);
+            }}
+          >
+            {staged ? "−" : "+"}
+          </button>
           <button
             type="button"
             className="git-panel__small-btn ignore"
@@ -107,7 +119,7 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onIgnore, onSelec
         {expanded && (
           <ul className="file-panel__list git-panel__children">
             {node.children.map((child) => (
-              <GitTreeItem key={child.path} node={child} depth={depth + 1} onAction={onAction} onRevert={onRevert} onIgnore={onIgnore} onSelect={onSelect} selectedFile={selectedFile} />
+              <GitTreeItem key={child.path} node={child} depth={depth + 1} staged={staged} onAction={onAction} onRevert={onRevert} onIgnore={onIgnore} onSelect={onSelect} selectedFile={selectedFile} />
             ))}
           </ul>
         )}
@@ -144,14 +156,14 @@ export function GitTreeItem({ node, depth, onAction, onRevert, onIgnore, onSelec
         </div>
         <button
           type="button"
-          className="git-panel__small-btn plus"
-          title="Stage/unstage"
+          className={`git-panel__small-btn ${staged ? "minus" : "plus"}`}
+          title={staged ? "Unstage" : "Stage"}
           onClick={(event) => {
             event.stopPropagation();
             onAction(node.path);
           }}
         >
-          +
+          {staged ? "−" : "+"}
         </button>
         <button
           type="button"

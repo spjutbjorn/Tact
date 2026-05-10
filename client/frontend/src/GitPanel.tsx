@@ -339,14 +339,15 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
 
         {!isSidebarCollapsed && (
           <section className="git-panel__column git-panel__column--changes git-panel__column--scroll">
-            <section className="git-panel__section">
+            {statusMessage && <div className="git-panel__status git-panel__status--top">{statusMessage}</div>}
+          <section className="git-panel__section">
             <div className="git-panel__section-title">Staged ({stagedFiles.length})</div>
             <ul className="file-panel__list">
               {stagedTree.length === 0 ? (
                 <li className="git-panel__empty">Nothing staged</li>
               ) : (
                 stagedTree.map((node) => (
-                  <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} onAction={handleUnstage} onRevert={handleRevert} onIgnore={handleIgnore} onSelect={handleSelect} selectedFile={selectedFile} />
+                  <GitTreeItem key={`staged-${node.path}`} node={node} depth={0} staged onAction={handleUnstage} onRevert={handleRevert} onIgnore={handleIgnore} onSelect={handleSelect} selectedFile={selectedFile} />
                 ))
               )}
             </ul>
@@ -367,7 +368,6 @@ export default function GitPanel({ initialFile, gitRoot, onSelectFile }: Props) 
 
           <section className="git-panel__section git-panel__section--commit">
             <div className="git-panel__section-title">Commit</div>
-            {statusMessage && <div className="git-panel__status">{statusMessage}</div>}
             <div className="git-panel__commit-box">
               <textarea
                 placeholder="Commit message..."

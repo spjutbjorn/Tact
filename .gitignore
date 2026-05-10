@@ -2,6 +2,15 @@
 .idea
 /client/build
 /client/client
+/client/.tact-media/
 /client/frontend/dist
 /client/frontend/node_modules
 *.DS_Store
+
+icons/.thumbnails/
+
+"client/.tact-media/
+
+"client/.tact-media/
+
+"client/.tact-media/

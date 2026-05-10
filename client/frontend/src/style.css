@@ -4334,6 +4334,13 @@
   font-size: 0.75rem;
 }
 
+.git-panel__status--top {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  margin: 4px 8px 0;
+  background: rgba(251, 191, 36, 0.08);
+}
+
 .git-panel__checkbox {
   display: flex;
   align-items: center;
